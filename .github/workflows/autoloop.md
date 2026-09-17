@@ -238,7 +238,7 @@ The pre-step has already determined which program to run. Read `/tmp/gh-aw/autol
 - **`no_programs`**: If `true`, no program files exist at all.
 - **`not_due`**: If `true`, programs exist but none are due for this run.
 - **`head_branch`**: The canonical long-running branch name for the selected program — always exactly `autoloop/{program-name}`, never with a suffix or hash. Use this value verbatim when creating, checking out, or pushing to the branch.
-- **`existing_pr`**: The number of the open draft PR for `autoloop/{program-name}`, or `null` if no PR exists yet. Use this to enforce the single-PR-per-program invariant — see [Step 5a: Push and wait for CI](#step-5a-push-and-wait-for-ci) and [Step 5c: Accept](#step-5c-accept).
+- **`existing_pr`**: The number of the open draft PR for `autoloop/{program-name}`, or `null` if no PR exists yet. Use this to enforce the single-PR-per-program invariant — see [Step 5a: Queue publication and yield](#step-5a-queue-publication-and-yield) and [Step 5c: Accept the verified candidate](#step-5c-accept-the-verified-candidate).
 
 If `selected` is not null:
 1. Read the program file from the `selected_file` path.
@@ -377,11 +377,11 @@ Examples:
 ### How It Works
 
 1. On the **first accepted iteration**, the branch is created from the default branch.
-2. On **subsequent iterations**, the agent checks out the existing branch and ensures it is up to date with the default branch. If the branch's changes have already been merged into the default branch (i.e., `git diff origin/main..autoloop/{program-name}` is empty), the branch is **reset to `origin/main`** to avoid stale commits. Otherwise, the default branch is merged into it.
+2. On **subsequent iterations**, the agent checks out the existing branch and ensures it is up to date with the default branch. The branch is fast-forwarded when its tip is already an ancestor of the default branch; otherwise, the default branch is merged into it without rewriting existing commits.
 3. **Accepted iterations** are committed and pushed to the branch. Each commit message references the GitHub Actions run URL.
 4. **Rejected or errored iterations** do not commit — changes are discarded.
 5. A **single draft PR** is created for the branch on the first accepted iteration. Future accepted iterations push additional commits to the same PR.
-6. The branch may be **merged into the default branch** at any time (by a maintainer or CI). After merging, the branch continues to be used for future iterations — it is never deleted while the program is active. On the next iteration, the branch is automatically reset to the default branch (see step 2) so that already-merged commits do not cause patch conflicts.
+6. The branch may be **merged into the default branch** at any time (by a maintainer or CI). After merging, the branch continues to be used for future iterations — it is never deleted while the program is active. On the next iteration, the branch is synchronized with the default branch without rewriting its history (see step 2) so that already-merged commits do not cause patch conflicts.
 
 ### Cross-Linking
 
@@ -409,6 +409,9 @@ Each run executes **one iteration for the single selected program**:
    
    If the state file does not yet exist, create it in the repo-memory folder using the template defined in the [Repo Memory](#repo-memory) section.
 
+If the machine state has a `Pending Tree`, reconcile it using Step 5b and end
+the run before starting Step 2.
+
 ### Step 2: Analyze and Propose
 
 1. Read the target files and understand the current state.
@@ -423,56 +426,19 @@ Each run executes **one iteration for the single selected program**:
 
 ### Step 3: Implement
 
-1. Check out the program's long-running branch `autoloop/{program-name}`, syncing it with the default branch using an explicit four-case decision tree based on commit ahead/behind counts. Run the following script (substituting `{program-name}`):
+1. Synchronize the canonical branch locally with the repository default branch.
+   Read `head_branch` from `/tmp/gh-aw/autoloop.json` into `branch`, determine
+   `default_branch` from repository metadata, then run the trusted helper:
 
    ```bash
-   git fetch origin main
-   if git ls-remote --exit-code origin autoloop/{program-name}; then
-     # Branch exists — fetch it too so the ahead/behind counts below are
-     # computed against up-to-date local copies of the remote tips.
-     git fetch origin autoloop/{program-name}
-
-     ahead=$(git rev-list --count origin/main..origin/autoloop/{program-name})
-     behind=$(git rev-list --count origin/autoloop/{program-name}..origin/main)
-
-     if [ "$ahead" = "0" ] && [ "$behind" != "0" ]; then
-       # All of the branch's commits are already in main (typical case after a
-       # successful merge of the previous iteration's PR). A merge here would
-       # produce a noisy "Merge main into branch" commit that re-exposes every
-       # historical file as a patch touch — the failure mode that triggers
-       # gh-aw's E003 (>100 files) when a new PR is opened. Fast-forward the
-       # canonical branch to main instead. This is lossless because ahead=0
-       # proves every commit on the branch is already reachable from main.
-       git checkout -B autoloop/{program-name} origin/main
-       git push --force-with-lease origin autoloop/{program-name}
-     elif [ "$ahead" != "0" ] && [ "$behind" != "0" ]; then
-       # True divergence: branch has unique commits AND main has moved on.
-       git checkout -B autoloop/{program-name} origin/autoloop/{program-name}
-       git rebase origin/main
-       # If rebase conflicts occur, resolve them, run `git rebase --continue`,
-       # and repeat until the rebase completes.
-       git push --force-with-lease origin autoloop/{program-name}
-     else
-       # Already at main (ahead=0, behind=0) or only ahead of main (ahead>0,
-       # behind=0). Nothing to rebase — just check out the branch.
-       git checkout -B autoloop/{program-name} origin/autoloop/{program-name}
-     fi
-   else
-     # Branch does not exist — create it from the default branch
-     git checkout -b autoloop/{program-name} origin/main
-   fi
+   bash .github/workflows/scripts/sync_automation_branch.sh "$branch" "$default_branch"
    ```
 
-   The four cases:
-
-   | ahead | behind | Action | Rationale |
-   |---|---|---|---|
-   | 0 | 0 | checkout (nothing to do) | branch is exactly at main |
-   | 0 | >0 | **fast-forward + force-push** | branch's commits already in main; merging would produce noisy merge commit |
-   | >0 | 0 | checkout (nothing to do) | unique work preserved; no upstream drift to rebase |
-   | >0 | >0 | checkout + rebase + force-push | true divergence; preserves a linear branch |
-
-   Use `--force-with-lease` rather than `--force` so that if anyone else is simultaneously pushing to the branch, the update is rejected rather than overwriting their commits.
+   The helper checks out the existing remote tip and merges the base, using a
+   fast-forward when possible. It preserves every existing branch commit and
+   never publishes. If it reports a conflict, stop and record the conflict for
+   a focused repair. Do not rebase, reset a divergent branch, force-push, or
+   invoke `git push` from the agent; all publication uses safe outputs.
 2. Make the proposed changes to the target files only.
 3. **Respect the program constraints**: do not modify files outside the target list.
 
@@ -484,72 +450,82 @@ Each run executes **one iteration for the single selected program**:
 
 ### Step 5: Accept or Reject
 
-The sandbox-computed metric is necessary but **not sufficient** for acceptance. The agent's sandbox cannot reliably install many project toolchains (e.g., `bun`, `tsc`, `cargo`, `go`, `pytest`) due to network restrictions on asset hosts, so a "metric improved" signal from the sandbox can mask broken commits (e.g., type-check or test failures the sandbox couldn't observe). Acceptance must therefore be gated on **CI green** for the pushed HEAD commit. If CI fails, attempt to fix-and-retry within the same iteration rather than reverting — reverting throws away mostly-correct work and creates `commit→revert→commit` churn on the branch.
+The measured metric and CI evidence are both required for acceptance. Safe
+outputs are queued intentions: publication happens **after the agent finishes**.
+A successful tool response does not mean the commit has reached GitHub. Never
+wait for CI on a commit queued during this run, and never treat an empty check
+list or checks from an older SHA as success.
 
-The accept path is split into three sub-steps: **5a (push and wait for CI)**, **5b (fix loop)**, **5c (accept)**.
+**If the metric did not improve**, use the rejection path below without
+requesting a push. Improvement is direction-aware: `new_metric > best_metric`
+for `higher`, `new_metric < best_metric` for `lower`; the first measured baseline
+counts as a candidate improvement.
 
-**If the metric did not improve**, jump straight to the "metric did not improve" path below — no push, no CI gate.
+#### Step 5a: Queue publication and yield
 
-#### Step 5a: Push and wait for CI
+1. Commit the candidate on `head_branch` with subject
+   `[Autoloop: {program-name}] Iteration <N>: <short description>` and a body
+   containing `Run: {run_url}`.
+2. Read `existing_pr` from the scheduler and verify it is still open. When it is
+   null, check the state file's `PR` field and query open PRs for the exact
+   canonical branch before creating another.
+3. If an open PR exists, request `push-to-pull-request-branch` exactly once. If
+   none exists, request `create-pull-request` exactly once, with the canonical
+   branch, title `[Autoloop: {program-name}]`, goal, program issue link, candidate
+   metric, local verification, and AI disclosure in the body. Never call both
+   publication tools for the same candidate. Do not use direct GitHub writes.
+4. Record `Pending Tree` (`git rev-parse HEAD^{tree}`), `Pending Metric`,
+   `Pending Iteration`, `Pending Run`, and `CI Fix Attempts` in the machine state.
+   Tree identity survives the signed commit or CI-trigger commit that PR
+   creation may add. Keep `best_metric` and `iteration_count` unchanged until
+   acceptance, set `last_run`, and append `pending-ci` to `recent_statuses`.
+5. Report that publication was requested and CI evidence is pending, then end
+   this run. Do not mark the candidate accepted or the program completed.
 
-**Only entered if the metric improved** (or this is the first run establishing a baseline).
+#### Step 5b: Reconcile a pending candidate on the next run
 
-Improvement is **direction-aware**:
-- If `selected_metric_direction` is `"higher"` (default): the metric improved when `new_metric > best_metric`.
-- If `selected_metric_direction` is `"lower"`: the metric improved when `new_metric < best_metric`.
+Perform this step immediately after reading state, **before proposing new work**,
+when `Pending Tree` is present.
 
-Read `selected_metric_direction` from `/tmp/gh-aw/autoloop.json` to know which direction applies. The first run (no `best_metric` yet) always counts as an improvement regardless of direction.
+1. Fetch the canonical remote branch and inspect its current tree and open PR.
+   If the tree differs from `Pending Tree`, inspect the prior `Pending Run`
+   safe-output result. A failed publication is an error to repair, not an
+   accepted iteration. Recover the candidate from its run artifacts if possible;
+   otherwise clear the pending fields, record the failed publication and its
+   cause, and start a fresh candidate from the current remote tip on a later
+   run. If another actor changed the branch, inspect and evaluate that new head
+   before proceeding. Do not overwrite it or advance the metric.
+2. For the matching remote head SHA, find the latest `CI` run whose `headSha`
+   matches using `gh run list --workflow CI --commit <sha> --json
+   databaseId,headSha,status,conclusion`. Inspect it with `gh run view <run-id>
+   --json headSha,status,conclusion,jobs`.
+3. Require a completed successful run for that exact SHA, with all four gates
+   present and successful: `Test & Lint`, `Playground E2E (Playwright)`, `Build`,
+   and `Validate Python Examples`. Missing, pending, skipped, stale, or failed
+   gates do not establish acceptance. If CI has not finished, record `pending-ci`
+   and yield; a later scheduled run will reconcile it.
+4. If CI fails, read the failing job logs, record a normalized failure signature,
+   and make a focused repair on the current remote branch. Run the relevant
+   local checks, re-evaluate the candidate metric, increment `CI Fix Attempts`,
+   and return to Step 5a only if the measured candidate still improves the
+   accepted metric. If it no longer improves, clear the pending acceptance and
+   report the failed candidate without accepting its metric. Preserve the
+   pending iteration number and CI fix attempt count across publication retries.
+   If the signature repeats after a repair, or five repairs have failed, pause
+   with `ci-fix-exhausted`, cite the logs, and request the smallest needed action.
+5. Only if the exact remote tree and CI gates are verified may Step 5c run.
+   Acceptance reconciles the prior candidate and ends this run; start the next
+   iteration on a later run.
 
-1. Commit the changes to the long-running branch `autoloop/{program-name}` with a commit message referencing the actions run:
-   - Commit message subject line: `[Autoloop: {program-name}] Iteration <N>: <short description>`
-   - Commit message body (after a blank line): `Run: {run_url}` referencing the GitHub Actions run URL.
-2. Push the commit to the long-running branch.
-3. **Find or create the PR** so CI runs and `gh pr checks` has a target. Follow these steps in order:
-   a. Check `existing_pr` from `/tmp/gh-aw/autoloop.json`. If it is not null, that is the existing draft PR — use it as `$EXISTING_PR` below; **never** call `create-pull-request`.
-   b. If `existing_pr` is null, also check the `PR` field in the state file's **⚙️ Machine State** table as a fallback. Verify it is still open via the GitHub API; if it has been closed or merged, treat it as if no PR exists and proceed to step (c).
-   c. If no PR exists (both sources are null): create one with `create-pull-request`, specifying `branch: autoloop/{program-name}` (the value of `head_branch` from `autoloop.json`) explicitly — do not let the framework auto-generate a branch name. See Step 5c for the title/body format.
-4. Wait for CI on the new HEAD and reduce all check-runs to a single status — `success`, `failure`, or `pending`:
+#### Step 5c: Accept the verified candidate
 
-   ```bash
-   PR=${EXISTING_PR:-$(gh pr list --head autoloop/{program-name} --json number -q '.[0].number')}
-   gh pr checks "$PR" --watch --interval 30 || true
-   status=$(gh pr checks "$PR" --json conclusion,state -q '.[] | (.conclusion // .state // "")' \
-     | awk '
-         BEGIN { r = "success" }
-         /^(FAILURE|CANCELLED|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE|STALE)$/ { r = "failure" }
-         /^(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED)$/ { if (r == "success") r = "pending" }
-         END { print r }')
-   ```
-
-   Three outcomes: `success`, `failure`, or `pending`. `pending` should be rare given `--watch`, but the awk fallback is defensive — never accept on `pending`. Treat `pending` as a non-terminal state: re-run the `gh pr checks --watch` step (it does not consume a fix attempt and the per-attempt `--watch` time still counts toward the 60-min wall-clock cap from Step 5b). If `pending` persists past the wall-clock cap, fall through to the `ci-timeout` handling in Step 5b.7.
-
-5. If `status == "success"`, proceed to **Step 5c**. If `status == "failure"`, proceed to **Step 5b**. If `status == "pending"`, re-run this step (subject to the wall-clock cap defined in Step 5b.7).
-
-#### Step 5b: Fix loop (up to 5 attempts per iteration)
-
-If `status == "failure"`, **fix and retry — do not revert, do not accept**:
-
-1. **Fetch the failing check-run logs** for the pushed SHA via `gh run view --log` or the Checks API.
-2. **Extract a structured failure summary**:
-   - Failing job names and the first error line for each.
-   - **A failure signature** — a stable, normalized fingerprint of the failures (e.g., sorted failing-test names + the top error code, like `TS2339:fromArrays:tests/stats/eval_query.test.ts`). The signature is what the no-progress guard compares.
-
-   *(The shared failure-signature extractor lives in the scheduler helper module — see issue #34 for the implementation.)*
-3. **No-progress guard**: if this attempt's failure signature exactly matches the previous attempt's signature, **stop**. The agent is stuck in a repeat-loop. Set `paused: true` on the state file with `pause_reason: "stuck in CI fix loop: <signature>"`, append `"ci-fix-exhausted"` to `recent_statuses`, comment on the program issue with the signature and the three most recent attempts, and end the iteration.
-4. **Attempt the fix**: feed the structured failure summary back to the agent as the next sub-task (e.g., "CI failed on `<sha>`. Here are the failures: `<…>`. Fix them and push again."). The agent commits the fix and pushes.
-5. **Loop back to Step 5a** with the new HEAD.
-6. **Budget: 5 fix attempts per iteration.** If the 5th attempt still leaves CI red, set `paused: true` with `pause_reason: "ci-fix-exhausted: <signature>"`, append `"ci-fix-exhausted"` to `recent_statuses`, comment on the program issue, and end the iteration.
-7. **Wall-clock cap: 60 min per iteration** including all CI waits across attempts. If exceeded mid-fix, set `paused: true` with `pause_reason: "ci-timeout"`, append `"ci-fix-exhausted"` to `recent_statuses`, leave the current branch state in place, and end the iteration.
-
-#### Step 5c: Accept
-
-**Only entered when `status == "success"`** from Step 5a (possibly after one or more fix attempts in Step 5b).
-
-1. The commit(s) are already on the long-running branch (pushed in Step 5a / 5b). No further pushing needed.
-2. If a draft PR does not already exist for this branch (i.e., `existing_pr` from `autoloop.json` is null AND the state file's `PR` field is null or refers to a closed PR), create one — specify `branch: autoloop/{program-name}` (the value of `head_branch` from `autoloop.json`) explicitly so the framework does not auto-generate a branch name:
-   - Title: `[Autoloop: {program-name}]`
-   - Body includes: a summary of the program goal, link to the program issue, the current best metric, and AI disclosure: `🤖 *This PR is maintained by Autoloop. Each accepted iteration adds a commit to this branch.*`
-   If a draft PR already exists, use `push-to-pull-request-branch` (never `create-pull-request`). Update the PR body with the latest metric and a summary of the most recent accepted iteration. Add a comment to the PR summarizing the iteration: what changed, old metric, new metric, improvement delta, the **fix-attempt count** if `> 0`, and a link to the actions run.
+1. Use `Pending Metric` and `Pending Iteration` as the accepted result, and cite
+   the verified remote SHA and CI run. The commit is already published; do not
+   request another push.
+2. Add a PR comment with the improvement, verification, and CI fix attempt count.
+   Clear the pending fields after updating the accepted state below.
+3. Resolve the single existing draft PR for the canonical branch; do not create
+   another PR during acceptance.
 4. Ensure the program issue exists (see [Program Issue](#program-issue) below) — for file-based programs that have no program issue yet (`selected_issue` is null in `/tmp/gh-aw/autoloop.json`), create one and record its number in the state file's `Issue` field.
 5. Update the state file `{program-name}.md` in the repo-memory folder:
    - Update the **⚙️ Machine State** table: reset `consecutive_errors` to 0, set `best_metric`, increment `iteration_count`, set `last_run` to current UTC timestamp, append `"accepted"` to `recent_statuses` (keep last 10), set `paused` to false.

@@ -27,6 +27,8 @@ safe-outputs:
   add-comment:
 
 tools:
+  github:
+    mode: gh-proxy
   cache-memory: true
   web-fetch:
 
@@ -55,13 +57,13 @@ You are the CI Failure Doctor, an expert investigative agent that analyzes faile
 
 1. **Verify Failure**: Check that `${{ github.event.workflow_run.conclusion }}` is `failure` or `cancelled`
 2. **Deduplication Check**: Read `/tmp/memory/investigations/analyzed-runs.json` from the cache. If the current run ID (`${{ github.event.workflow_run.id }}`) is already listed, **stop immediately** — this run has already been investigated. After completing a new investigation, append the run ID to this index to prevent re-analysis.
-3. **Get Workflow Details**: Use `get_workflow_run` to get full details of the failed run
-4. **List Jobs**: Use `list_workflow_jobs` to identify which specific jobs failed
+3. **Get Workflow Details**: Use `gh run view <run-id> --repo <repository> --json headSha,status,conclusion,jobs,url` to read the failed run
+4. **List Jobs**: Read the returned jobs to identify the failed job IDs and names
 5. **Quick Assessment**: Determine if this is a new type of failure or a recurring pattern
 
 ### Phase 2: Deep Log Analysis
 
-1. **Retrieve Logs**: Use `get_job_logs` with `failed_only=true` to get logs from all failed jobs
+1. **Retrieve Logs**: Use `gh run view <run-id> --repo <repository> --log-failed` to read failed-job logs; use `gh run view --job <job-id> --repo <repository> --log` for an individual job
 2. **Pattern Recognition**: Analyze logs for:
    - Error messages and stack traces
    - Dependency installation failures

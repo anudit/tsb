@@ -45,6 +45,7 @@ safe-outputs:
     preserve-branch-name: true
     max: 1
   push-to-pull-request-branch:
+    signed-commits: false
     target: "*"
     required-title-prefix: "[Goal"
     protected-files:
@@ -222,29 +223,23 @@ The branch name is always exactly the scheduler-provided `selected.branch`.
 Never add suffixes, hashes, run IDs, timestamps, or random tokens. Never let the
 framework auto-generate a branch name.
 
-Synchronize the branch before making changes. Use the repository default branch
-in place of `<default>` below:
+Synchronize the branch locally before making changes. Read `selected.branch`
+into `branch`, determine `default_branch` from repository metadata, then run:
 
 ```bash
-git fetch origin <default>
-if git ls-remote --exit-code origin <branch>; then
-  git fetch origin <branch>
-  ahead=$(git rev-list --count origin/<default>..origin/<branch>)
-  behind=$(git rev-list --count origin/<branch>..origin/<default>)
-
-  if [ "$ahead" = "0" ] && [ "$behind" != "0" ]; then
-    git checkout -B <branch> origin/<default>
-    git push --force-with-lease origin <branch>
-  elif [ "$ahead" != "0" ] && [ "$behind" != "0" ]; then
-    git checkout -B <branch> origin/<branch>
-    git merge origin/<default> --no-edit -m "Merge <default> into <branch>"
-  else
-    git checkout -B <branch> origin/<branch>
-  fi
-else
-  git checkout -b <branch> origin/<default>
-fi
+bash .github/workflows/scripts/sync_automation_branch.sh "$branch" "$default_branch"
 ```
+
+This preserves remote history and merges the base without rewriting existing
+commits. Stop on conflicts and record the focused repair needed. Never rebase,
+force-push, or run `git push` from the agent. Publish through exactly one
+`push-to-pull-request-branch` request for an existing PR, or one
+`create-pull-request` request when no canonical open PR exists.
+
+Safe outputs publish only after the agent ends. Record the candidate tree and
+local evidence as pending, then verify the remote tree and required CI on a
+later run. Do not mark a goal completed or report changes as published while
+its required publication or CI evidence is still pending.
 
 Create or update the PR:
 
@@ -267,8 +262,9 @@ For the selected goal:
 6. Run the verification evidence that is relevant to the checkpoint. If full
    verification is too expensive for this run, run the narrow check first and
    explain exactly what remains.
-7. Commit and push meaningful changes to the canonical branch.
-8. Create or update the single draft PR.
+7. Commit meaningful changes to the canonical branch locally.
+8. Request the appropriate safe output for the single draft PR; publication and
+   any resulting CI remain pending until verified on a later run.
 9. Update the state file.
 10. Post a new per-run comment on the goal issue.
 11. Update the status comment marked `<!-- GOAL:STATUS -->`.

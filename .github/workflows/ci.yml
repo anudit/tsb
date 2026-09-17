@@ -9,6 +9,7 @@ on:
   pull_request:
     branches:
       - main
+      - "autoloop/**"
 
 permissions:
   contents: read
@@ -20,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Test automation branch synchronization
+        run: python3 -m unittest discover -s .github/workflows/scripts -p 'test_*.py'
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
