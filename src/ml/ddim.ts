@@ -41,6 +41,20 @@ export interface NoiseScheduleValues {
 /** Compute noise schedule from config. */
 export function computeNoiseSchedule(config: DDIMConfig): NoiseScheduleValues {
   const T = config.numTrainTimesteps;
+  if (!Number.isInteger(T) || T < 1) {
+    throw new RangeError("numTrainTimesteps must be a positive integer");
+  }
+  if (
+    config.schedule !== "cosine" &&
+    (!Number.isFinite(config.betaStart) ||
+      !Number.isFinite(config.betaEnd) ||
+      config.betaStart < 0 ||
+      config.betaStart >= 1 ||
+      config.betaEnd < 0 ||
+      config.betaEnd >= 1)
+  ) {
+    throw new RangeError("betaStart and betaEnd must be finite values in [0, 1)");
+  }
   const betas = new Float64Array(T);
   const alphas = new Float64Array(T);
   const alphasCumprod = new Float64Array(T);
@@ -48,21 +62,23 @@ export function computeNoiseSchedule(config: DDIMConfig): NoiseScheduleValues {
   const sqrtOneMinusAlphasCumprod = new Float64Array(T);
 
   if (config.schedule === "linear") {
-    const step = (config.betaEnd - config.betaStart) / (T - 1);
+    const step = T === 1 ? 0 : (config.betaEnd - config.betaStart) / (T - 1);
     for (let t = 0; t < T; t++) {
       betas[t] = config.betaStart + t * step;
     }
   } else if (config.schedule === "cosine") {
     const s = 0.008;
-    const f0 = Math.cos(((0 / T + s) / (1 + s)) * (Math.PI / 2)) ** 2;
+    let previous = Math.cos((s / (1 + s)) * (Math.PI / 2)) ** 2;
     for (let t = 0; t < T; t++) {
       const ft = Math.cos((((t + 1) / T + s) / (1 + s)) * (Math.PI / 2)) ** 2;
-      betas[t] = Math.min(1 - ft / f0, 0.999);
+      // Each beta is the loss of signal relative to the previous timestep.
+      betas[t] = Math.min(1 - ft / previous, 0.999);
+      previous = ft;
     }
   } else {
     // sqrt schedule
     for (let t = 0; t < T; t++) {
-      const frac = t / (T - 1);
+      const frac = T === 1 ? 0 : t / (T - 1);
       betas[t] = config.betaStart + (config.betaEnd - config.betaStart) * Math.sqrt(frac);
     }
   }
@@ -110,9 +126,7 @@ export function ddimStep(
   const sqrtOneMinusAcpCurr = Math.sqrt(1 - acpCurr);
   const sqrtAcpPrev = Math.sqrt(acpPrev);
 
-  const sigmaT =
-    eta *
-    Math.sqrt(((1 - acpPrev) / (1 - acpCurr)) * (1 - acpCurr / acpPrev));
+  const sigmaT = eta * Math.sqrt(((1 - acpPrev) / (1 - acpCurr)) * (1 - acpCurr / acpPrev));
 
   const result = new Float64Array(xt.length);
   for (let i = 0; i < xt.length; i++) {
@@ -128,10 +142,7 @@ export function ddimStep(
 }
 
 /** Generate a sequence of timesteps for DDIM inference. */
-export function ddimTimesteps(
-  numTrainTimesteps: number,
-  numInferenceSteps: number,
-): number[] {
+export function ddimTimesteps(numTrainTimesteps: number, numInferenceSteps: number): number[] {
   const step = Math.floor(numTrainTimesteps / numInferenceSteps);
   const timesteps: number[] = [];
   for (let i = numInferenceSteps - 1; i >= 0; i--) {
