@@ -7,12 +7,18 @@ inline heredoc because the compiled `run:` expression exceeded GitHub
 Actions' 20.5 KB per-expression limit.
 """
 import os, json, re, glob, sys
+import http.client
 import urllib.request, urllib.error
 from datetime import datetime, timezone, timedelta
 from autoloop_policy import (
     automatic_skip_reason, metric_direction, parse_machine_state,
     pending_candidate_kind, state_metadata,
 )
+
+
+class SchedulerError(RuntimeError):
+    """Required GitHub evidence is unavailable; do not select a partial queue."""
+
 
 programs_dir = ".autoloop/programs"
 autoloop_dir = ".autoloop/programs"
@@ -172,6 +178,8 @@ os.makedirs(issue_programs_dir, exist_ok=True)
 file_program_issues = {}
 file_program_titles = set()  # known file-based program names (to skip when slugifying)
 try:
+    if not repo or not github_token:
+        raise SchedulerError("Autoloop discovery requires a repository and GitHub token")
     api_url = f"https://api.github.com/repos/{repo}/issues?labels=autoloop-program&state=open&per_page=100"
     req = urllib.request.Request(api_url, headers={
         "Authorization": f"token {github_token}",
@@ -179,6 +187,23 @@ try:
     })
     with urllib.request.urlopen(req, timeout=30) as resp:
         issues = json.loads(resp.read().decode())
+    # Validate the complete response before registering any issue programs.
+    # A failed or malformed discovery is not an empty queue, even when local
+    # program files exist and could otherwise be selected.
+    if not isinstance(issues, list):
+        raise SchedulerError("GitHub did not return an Autoloop issue list")
+    for issue in issues:
+        if not isinstance(issue, dict):
+            raise SchedulerError("GitHub returned an invalid Autoloop issue")
+        number = issue.get("number")
+        if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+            raise SchedulerError("GitHub returned an invalid Autoloop issue number")
+        if not isinstance(issue.get("title"), str):
+            raise SchedulerError("GitHub returned an invalid Autoloop issue title")
+        if "body" not in issue or (issue["body"] is not None and not isinstance(issue["body"], str)):
+            raise SchedulerError("GitHub returned an invalid Autoloop issue body")
+        if issue.get("pull_request") is not None and not isinstance(issue["pull_request"], dict):
+            raise SchedulerError("GitHub returned an invalid Autoloop pull request marker")
     # First pass: identify file-based program issues by their conventional title.
     # We compute the set of known file-based program names from program_files first.
     known_file_program_names = set()
@@ -231,8 +256,16 @@ try:
         program_files.append(issue_file)
         issue_programs[slug] = {"issue_number": number, "file": issue_file, "title": title}
         print(f"  Found issue-based program: '{slug}' (issue #{number})")
-except Exception as e:
-    print(f"  Warning: could not fetch issue-based programs: {e}")
+except (SchedulerError, urllib.error.URLError, http.client.HTTPException, ValueError, OSError) as failure:
+    error = (str(failure) if isinstance(failure, SchedulerError)
+             else "Could not read required Autoloop program evidence from GitHub")
+    os.makedirs("/tmp/gh-aw", exist_ok=True)
+    with open("/tmp/gh-aw/autoloop.json", "w", encoding="utf-8") as f:
+        json.dump({"selected": None, "selected_file": None, "selected_issue": None,
+                   "issue_programs": {}, "deferred": [], "skipped": [],
+                   "unconfigured": [], "no_programs": False, "error": error}, f, indent=2)
+    print(f"ERROR: {error}")
+    sys.exit(1)
 
 if not program_files:
     # Fallback to single-file locations
