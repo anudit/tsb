@@ -10,20 +10,60 @@ sections directly.
 | Issue | #500 |
 | Branch | `goal/500-goal-execute-scenario-7-against-independent-pandas-snapshots` |
 | PR | #505 |
-| Status | active |
-| Last Run | 2026-09-17T18:44Z (run 35259997105) |
-| Run Count | 4 |
-| Pending Tree | 4fec5aef851162c2a92b9ec8624dc43c08fcb573 |
-| Pending Run | pending push_to_pull_request_branch (run 35259997105), commit 4d5c7bf1 |
-| Verified Head | ec17455febf8143cec69147a0d54cda4646f7b92 (tree 821ba368633761bf02fc3a1fec25d924c7d0627d) — reconciled this run: both 481dfca9 and ec17455f are actually published on PR #505 (confirmed via authenticated MCP pull_request_read, matching independent review comment 5719...). The prior run's "unpublished/unrecoverable ec17455f" note was incorrect; corrected here. CI for this exact head (run 35255712600) is `action_required` (0 jobs ran, blocked by the one-new-commit CI-trigger guard per safe-output logs), not yet a passing result. |
-| Completed | false |
-| Completed Reason | - |
+| Status | completed |
+| Last Run | 2026-09-17T18:53Z (run 35261222408) |
+| Run Count | 5 |
+| Pending Tree | - |
+| Pending Run | - |
+| Verified Head | 38e876329d9ab4cfd9eb02e82513b0fe1abec60e (tree 4fec5aef851162c2a92b9ec8624dc43c08fcb573) — this run confirmed via `git rev-parse` that the local synced branch head's tree matches the pending tree recorded at the end of run 4, i.e. commit `4d5c7bf1` did land on PR #505 (the framework added a same-tree "ci: trigger checks" commit on top). Independently confirmed via authenticated MCP `pull_request_read` (PR #505 `head.sha` = this exact SHA, `mergeable_state: clean`, still `draft`). |
+| Completed | true |
+| Completed Reason | All 6 completion-contract points satisfied with evidence gathered this run against the exact published head 38e87632: (1)(2) `tests/xval/scenario_7.ts`/`strict_compare.ts` build inputs independently from `golden/generate.py` literals and call the real public tsb API, comparing all 10 steps with label-type-preserving strict comparison; (3) 4 negative-control tests + numeric/string label regression test present and passing; (4) scenario 7 no longer uses `materializeSnapshotStep`, other scenarios' materialization-only checks untouched (`git diff --stat` confirms only `tests/xval/**` changed since main); (5) dtype/in-place-mutation limits documented in code comments and PR body, not silently normalized; (6) native CI run 35261251110 for this exact head shows `conclusion: success` with all 4 required jobs (Test & Lint, Playground E2E, Build, Validate Python Examples) individually `completed`/`success`, verified via the trusted `automation_ci.py rest-status` helper. |
 | Blocked | false |
 | Blocked Reason | - |
 
 ## Current Checkpoint
 
-**Reconciliation (this run):** independent review (issue #500 comment
+**Completion reconciliation (run 5, this run):** Followed the maintainer's
+final-reconciliation instructions (issue comment 5719625658). Read the
+read-only branch-state snapshot (`38e876...` head), synced/verified the
+branch offline, then independently re-derived every fact rather than
+trusting prior memory:
+
+- `git rev-parse HEAD^{tree}` on the synced branch == `git rev-parse
+  4d5c7bf1^{tree}` == `4fec5aef851162c2a92b9ec8624dc43c08fcb573` — proves the
+  last checkpoint's tree is unchanged all the way to the current head; the
+  extra commit on top (`38e87632`, "ci: trigger checks") is a same-tree,
+  CI-trigger-only commit, not a content change.
+- Authenticated MCP `pull_request_read` on PR #505: `head.sha ==
+  38e876329d9ab4cfd9eb02e82513b0fe1abec60e`, `state: open`, `draft: true`,
+  `mergeable_state: clean` — confirms this tree is genuinely the PR's real,
+  current remote head (not stale local state).
+- Authenticated MCP `actions_list` (`list_workflow_runs`, full first page,
+  `total_count` preserved) + `mcp-select` helper: resolved run
+  `35261251110` as the run whose `head_sha` matches the actual head exactly.
+- Authenticated MCP `actions_get`/`get_workflow_run` + `list_workflow_jobs`
+  for that run, validated via `automation_ci.py rest-status`: returned
+  `success`. All four required jobs (`Test & Lint`, `Validate Python
+  Examples`, `Playground E2E (Playwright)`, `Build`) are individually
+  `status: completed`, `conclusion: success`.
+- Re-ran the full local evidence suite directly on this exact checked-out
+  head (not from memory): `bun test ./tests/xval/` → 27 pass, 0 fail, 15981
+  expect() calls; `bun run typecheck` → clean (tsc --noEmit, exit 0);
+  `bun run lint` → exit 0 (1262 pre-existing warnings only, no new errors);
+  `python golden/generate.py` (pandas 2.2.3, numpy 2.1.3) then `git diff
+  --exit-code -- golden/generate.py golden/snapshots/` → no diff.
+- `grep` across the three new/changed xval files confirmed zero `as `
+  casts, `any`, or `@ts-ignore` (only comment-text matches of the word
+  "as"). `git diff --stat` from `main` (7b200b07) confirms only
+  `tests/xval/**` changed (4 files, 733 insertions, 26 deletions), matching
+  the scope constraint.
+
+All 6 completion contract points (see Completed Reason above) are satisfied
+by this exact-head evidence. No code change was needed this run — this was
+a pure reconciliation/acceptance run per the workflow's rules. Marked
+`Completed: true`, applying `goal-completed` and removing `goal`.
+
+**Prior reconciliation (run 4):** independent review (issue #500 comment
 5719873...) confirmed PR #505's actual observed head after run 3 was
 `ec17455f` (tree `821ba368`), containing **both** `481dfca9` and `ec17455f`
 — the bigint/duration fix was in fact published despite run 3's
@@ -177,6 +217,18 @@ treat this run's local verification as sufficient for completion.
 
 ## Run History
 
+- Run 5 (workflow-run-id 35261222408, 2026-09-17T18:53Z): pure
+  reconciliation/acceptance run, no code changes. Independently re-verified
+  every fact: local tree == remote PR #505 head tree (`4fec5aef`, via
+  `38e876329d9ab4cfd9eb02e82513b0fe1abec60e`); native CI run 35261251110 for
+  that exact head is `success` with all 4 required jobs individually green
+  (verified via authenticated MCP + `automation_ci.py rest-status`);
+  re-ran full local test/typecheck/lint/golden-regen suite directly on the
+  checked-out head with matching results; confirmed no `as` casts/`any`/
+  `@ts-ignore` and scope confined to `tests/xval/**`. All 6 completion
+  contract points satisfied. Marked Goal #500 completed; applied
+  `goal-completed`, removed `goal`. PR #505 left open/draft for maintainer
+  review/merge.
 - Run 1 (workflow-run-id 35245402945, 2026-09-17T16:17Z): implemented
   scenario_7 executor + strict comparator + tests; verified locally;
   published PR #505 (head 659dce5d, CI run 35247646137 succeeded); human
