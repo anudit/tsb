@@ -564,6 +564,34 @@ const autoMergeCases = [
     "native-requirements-unsatisfied",
   ],
 ];
+for (const mode of ["off", "opt-in"]) {
+  for (const [name, changes, state, reason] of [
+    ["native requirements satisfied", {}, "ready", "all-requirements-satisfied"],
+    ["merge conflict", { mergeable: false }, "attention", "merge-conflict"],
+    ["unknown mergeability", { mergeable: undefined }, "waiting", "mergeability-unknown"],
+    [
+      "native blocker",
+      { nativeRequirementsSatisfied: false },
+      "waiting",
+      "native-requirements-unsatisfied",
+    ],
+    [
+      "unknown native rules",
+      { nativeRequirementsSatisfied: undefined },
+      "waiting",
+      "native-requirements-unsatisfied",
+    ],
+  ]) {
+    test(`manual readiness with auto merge ${mode}: ${name}`, () => {
+      const actual = plan(input({ policy: { autoMerge: mode }, candidate: changes }));
+      assert.equal(actual.state, state);
+      assert.equal(actual.reason, reason);
+      assert.deepEqual(actual.proposedEffects, []);
+      assert.deepEqual(actual.effects, []);
+    });
+  }
+}
+
 for (const [name, changes, state, reason] of autoMergeCases) {
   test(`auto merge: ${name}`, () => {
     const actual = plan(input({ policy: { autoMerge: "on" }, candidate: changes }));

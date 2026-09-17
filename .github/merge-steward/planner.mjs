@@ -237,6 +237,13 @@ export function plan(input) {
     });
   }
 
+  if (candidate.mergeable === false)
+    return result("attention", "merge-conflict", candidate, policy);
+  if (candidate.mergeable !== true)
+    return result("waiting", "mergeability-unknown", candidate, policy);
+  if (candidate.nativeRequirementsSatisfied !== true) {
+    return result("waiting", "native-requirements-unsatisfied", candidate, policy);
+  }
   if (
     policy.autoMerge === "off" ||
     (policy.autoMerge === "opt-in" && !candidate.labels.includes("mq:auto-merge"))
@@ -250,13 +257,6 @@ export function plan(input) {
     return result("noop", "auto-merge-already-enabled", candidate, policy);
   if (candidate.autoMergeRequest !== null)
     return result("waiting", "native-auto-merge-state-unknown", candidate, policy);
-  if (candidate.mergeable === false)
-    return result("attention", "merge-conflict", candidate, policy);
-  if (candidate.mergeable !== true)
-    return result("waiting", "mergeability-unknown", candidate, policy);
-  if (candidate.nativeRequirementsSatisfied !== true) {
-    return result("waiting", "native-requirements-unsatisfied", candidate, policy);
-  }
   return result("auto-merge", "all-requirements-satisfied", candidate, policy, [
     effect(candidate, "auto-merge", policy.mergeMethod, { method: policy.mergeMethod }),
   ]);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { plan } from "./planner.mjs";
 import {
+  changesAutomation,
   diagnosisIsFirst,
   diagnosisRuns,
   digest,
@@ -12,6 +13,64 @@ import {
   resolvePullRequests,
   sameIdentity,
 } from "./reconcile.mjs";
+
+for (const filename of [
+  ".github/workflows/new-ci.yml",
+  ".github/workflows/diagnose.md",
+  ".github/workflows/diagnose.lock.yml",
+  ".github/actions/helper/action.yml",
+  ".github/aw/shared.md",
+  ".github/merge-steward/planner.mjs",
+  ".github/merge-steward.yml",
+  ".github/merge-steward.schema.json",
+]) {
+  test(`automation changes include newly added or changed ${filename}`, () => {
+    assert.equal(changesAutomation([{ filename }]), true);
+  });
+}
+
+test("renaming a sensitive automation file away still requires review", () => {
+  assert.equal(
+    changesAutomation([
+      { filename: "docs/old-ci.yml", previous_filename: ".github/workflows/ci.yml" },
+    ]),
+    true,
+  );
+});
+
+test("renaming a regular file into an automation path requires review", () => {
+  assert.equal(
+    changesAutomation([
+      { filename: ".github/actions/new/action.yml", previous_filename: "docs/example.yml" },
+    ]),
+    true,
+  );
+});
+
+test("ordinary source and documentation changes do not become automation changes", () => {
+  assert.equal(
+    changesAutomation([
+      { filename: "src/core/dataframe.ts" },
+      { filename: ".github/merge-steward.md" },
+      { filename: ".github/workflows-not-active/ci.yml" },
+      { filename: ".github/merge-steward.yml.backup" },
+      { filename: "docs/new.md", previous_filename: "docs/old.md" },
+    ]),
+    false,
+  );
+  assert.equal(changesAutomation([]), false);
+});
+
+test("a sensitive change cannot hide among ordinary files", () => {
+  assert.equal(
+    changesAutomation([
+      { filename: "src/index.ts" },
+      { filename: ".github/merge-steward/reconcile.mjs" },
+      { filename: "docs/guide.md" },
+    ]),
+    true,
+  );
+});
 
 const repository = "githubnext/tsb";
 const candidate = {
