@@ -183,6 +183,12 @@ export function plan(input) {
   if (policy.requireNonDraft && candidate.isDraft)
     return result("waiting", "draft-pull-request", candidate, policy);
 
+  // This is an already-understood human boundary, not an unknown exception.
+  // Repeated events must not spend model calls rediscovering the same review.
+  if (input.maintainerReviewRequired === true) {
+    return result("attention", "automation-review-required", candidate, policy);
+  }
+
   const problems = policyProblems(policy);
   if (input.policyAmbiguity || problems.length > 0) {
     return diagnose(input, "policy-ambiguity", "policy-ambiguity", { problems });

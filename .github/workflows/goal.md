@@ -17,6 +17,12 @@ on:
 
 permissions: read-all
 
+runtimes:
+  bun:
+    version: '1.4.2'
+  python:
+    version: '3.12'
+
 jobs:
   preflight:
     name: Check for Goal work without an agent
@@ -54,6 +60,9 @@ max-daily-ai-credits: 200K
 network:
   allowed:
   - defaults
+  # Existing branch synchronization needs HTTPS reads of this GitHub repository.
+  # Agent permissions remain read-only; publication still uses safe outputs.
+  - "https://github.com"
   - node
   - python
   - rust
@@ -120,6 +129,10 @@ steps:
       GOAL_ISSUE: ${{ github.event.inputs.issue }}
     run: |
       python3 .github/workflows/scripts/goal_scheduler.py
+  - name: Prepare the selected goal's pinned tools
+    run: |
+      cp .github/workflows/scripts/provision_agent_runtime.py /tmp/gh-aw/provision_agent_runtime.py
+      python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json --repo-root "$GITHUB_WORKSPACE"
 
 source: githubnext/goal
 engine: copilot
@@ -146,6 +159,15 @@ issue number or add the `goal` label to the intended issue, then stop.
 ## Read The Scheduler Output
 
 At the start of every run, read `/tmp/gh-aw/goal.json`.
+
+For selected work, first source `/tmp/gh-aw/agent-runtime.env` inside the sandbox.
+Run `python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json --repo-root "$GITHUB_WORKSPACE"`
+once to refresh dependencies for the actual checkout, then run the same trusted
+helper with `--check-only --repo-root "$GITHUB_WORKSPACE"`. After
+switching/synchronizing branches, repeat this bounded refresh-then-check sequence.
+Never substitute the branch-owned helper or restage it after switching branches.
+Record the emitted versions/SHA; if refresh or checking fails, report one setup blocker, not blind
+installer retries or passing evidence. A null selection needs no setup.
 
 Important fields:
 

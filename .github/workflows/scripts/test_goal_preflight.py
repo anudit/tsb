@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
-from goal_preflight import PreflightError, has_open_goal, should_run
+from goal_preflight import PreflightError, has_open_goal, requested_issue_is_unfinished, should_run
 
 
 def issue(*labels, **fields):
@@ -67,10 +67,52 @@ class GoalPreflightTest(unittest.TestCase):
     def test_schedule_with_work_runs(self):
         self.assertTrue(should_run("schedule", {}, lambda: True)[0])
 
-    def test_explicit_dispatch_does_not_depend_on_labels_or_api(self):
+    def test_explicit_dispatch_checks_only_the_requested_issue_not_the_queue(self):
         discover = Mock(side_effect=AssertionError("must not discover"))
-        self.assertTrue(should_run("workflow_dispatch", {"inputs": {"issue": "77"}}, discover)[0])
+        inspect_issue = Mock(return_value=True)
+        self.assertTrue(should_run("workflow_dispatch", {"inputs": {"issue": "77"}}, discover, inspect_issue)[0])
+        inspect_issue.assert_called_once_with(77)
         discover.assert_not_called()
+
+    def test_completed_explicit_issue_skips_agent_without_queue_scan(self):
+        discover, inspect_issue = Mock(), Mock(return_value=False)
+        decision, reason = should_run("workflow_dispatch", {"inputs": {"issue": "77"}}, discover, inspect_issue)
+        self.assertFalse(decision)
+        self.assertIn("no model needed", reason)
+        inspect_issue.assert_called_once_with(77)
+        discover.assert_not_called()
+
+    def test_explicit_issue_read_is_single_and_allows_unlabeled_open_work(self):
+        get_page = Mock(return_value=(issue(number=77), '<https://ignored.example>; rel="next"'))
+        self.assertTrue(requested_issue_is_unfinished("owner/repo", "test-token", 77, get_page=get_page))
+        get_page.assert_called_once_with("https://api.github.com/repos/owner/repo/issues/77", "test-token")
+
+    def test_closed_or_goal_completed_explicit_issue_is_not_work(self):
+        for body in (issue(number=77, state="closed"), issue("goal-completed", number=77),
+                     issue("goal", "goal-completed", number=77)):
+            with self.subTest(body=body):
+                self.assertFalse(requested_issue_is_unfinished("owner/repo", "test-token", 77,
+                                 get_page=lambda *args: (body, "")))
+
+    def test_invalid_explicit_issue_numbers_do_not_scan_or_fetch(self):
+        for number in (0, -1, True, False, "0", "-7", "#77", "1.5", "77/other", "77\n88"):
+            with self.subTest(number=number), self.assertRaises(PreflightError):
+                should_run("workflow_dispatch", {"inputs": {"issue": number}}, Mock(), Mock())
+
+    def test_explicit_issue_api_errors_are_not_an_empty_or_completed_queue(self):
+        discover = Mock()
+        with self.assertRaises(PreflightError):
+            should_run("workflow_dispatch", {"inputs": {"issue": "77"}}, discover,
+                       Mock(side_effect=PreflightError("API unavailable")))
+        discover.assert_not_called()
+
+    def test_malformed_explicit_issue_evidence_fails_visibly(self):
+        for body in (None, [], {"message": "not found"}, issue(number=78), issue(number=True),
+                     issue(number=77, state="unknown"), issue(number=77, labels=None),
+                     issue(number=77, pull_request={})):
+            with self.subTest(body=body), self.assertRaises(PreflightError):
+                requested_issue_is_unfinished("owner/repo", "test-token", 77,
+                                             get_page=lambda *args: (body, ""))
 
     def test_slash_commands_keep_the_existing_event_contract(self):
         for event_name, key in (

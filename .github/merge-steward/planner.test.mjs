@@ -125,7 +125,13 @@ const cases = [
   ["missing evidence", { evidence: {} }, "waiting", "required-check-not-reported"],
   ["evidence collection absent", { evidence: undefined }, "waiting", "required-check-not-reported"],
   ["unknown failure", { unknownBlockingFailure: true }, "diagnose", "unknown-failure"],
-  ["unclassified new job", { policyAmbiguity: true }, "diagnose", "policy-ambiguity"],
+  ["unresolved policy ambiguity", { policyAmbiguity: true }, "diagnose", "policy-ambiguity"],
+  [
+    "known automation review",
+    { maintainerReviewRequired: true },
+    "attention",
+    "automation-review-required",
+  ],
   [
     "known failure without diagnosis",
     {
@@ -151,6 +157,18 @@ for (const [name, changes, state, reason] of cases) {
     assert.ok(actual.effects.every((item) => item.type === "diagnose"));
   });
 }
+
+test("known maintainer review never activates a model, including repeated events", () => {
+  for (const policyAmbiguity of [false, true]) {
+    const current = input({ maintainerReviewRequired: true, policyAmbiguity });
+    for (let event = 0; event < 3; event++) {
+      const actual = plan(current);
+      assert.equal(actual.state, "attention");
+      assert.deepEqual(actual.effects, []);
+      assert.deepEqual(actual.proposedEffects, []);
+    }
+  }
+});
 
 for (const conclusion of ["EXPECTED", "PENDING", "QUEUED", "IN_PROGRESS", "WAITING"]) {
   test(`${conclusion} is a normal wait without model activation`, () => {

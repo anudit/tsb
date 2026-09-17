@@ -18,6 +18,88 @@ readiness:
   dependencies: ignore
 
 jobs:
+  wasm-verification:
+    source: .github/workflows/wasm-verification.yml#verify
+    check_name: Build and verify real Wasm
+    provides: [source-built-wasm, wasm-runtime-regressions]
+    necessity:
+      level: advisory
+      when:
+        paths: [rust/**, src/**, tests/core/**, tests/wasm/**, .github/workflows/wasm-verification.yml]
+    freshness:
+      subject: every-head
+      invalidated_by: [any-head-change, workflow-change, policy-change]
+    approval:
+      mode: never
+    risk:
+      executes_pr_code: true
+      secrets: []
+      permissions: ["contents:read"]
+      network: internet
+      external_writes: [actions-artifact]
+    cost:
+      tier: high
+      expected_minutes: 3
+      runner: ubuntu-latest
+    phase: on-change
+    failure:
+      automatic_retries: 0
+      diagnose: false
+
+  benchmark-verification:
+    source: .github/workflows/benchmark-verification.yml#verify
+    check_name: Measure selected benchmark pairs
+    provides: [measured-benchmark-tranche]
+    necessity:
+      level: advisory
+      when:
+        paths: [benchmarks/**, .github/workflows/benchmark-verification.yml, .github/workflows/scripts/benchmark_selection.py]
+    freshness:
+      subject: every-head
+      invalidated_by: [any-head-change, workflow-change, policy-change]
+    approval:
+      mode: never
+    risk:
+      executes_pr_code: true
+      secrets: []
+      permissions: ["contents:read"]
+      network: internet
+      external_writes: [actions-artifact]
+    cost:
+      tier: high
+      expected_minutes: 2
+      runner: ubuntu-latest
+    phase: on-change
+    failure:
+      automatic_retries: 0
+      diagnose: false
+
+  goal-preflight:
+    source: .github/workflows/goal.md#preflight
+    check_name: Check for Goal work without an agent
+    provides: [goal-work-selection]
+    necessity:
+      level: advisory
+    freshness:
+      subject: every-head
+      invalidated_by: [manual, workflow-change, policy-change]
+    approval:
+      mode: never
+    risk:
+      executes_pr_code: false
+      secrets: []
+      permissions: ["contents:read", "issues:read"]
+      network: internet
+      external_writes: []
+    cost:
+      tier: low
+      expected_minutes: 0.2
+      runner: ubuntu-latest
+    phase: on-change
+    failure:
+      automatic_retries: 0
+      diagnose: false
+
   test-and-lint:
     source: .github/workflows/ci.yml#test
     check_name: Test & Lint

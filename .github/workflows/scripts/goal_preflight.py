@@ -92,14 +92,44 @@ def has_goal_command(event_name: str, event: dict) -> bool:
     )
 
 
-def should_run(event_name: str, event: dict, discover) -> tuple[bool, str]:
+def requested_issue_is_unfinished(repo: str, token: str, number: int,
+                                  api_url: str = "https://api.github.com", get_page=_get_page) -> bool:
+    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise PreflightError("Goal discovery requires a repository and GitHub token")
+    if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+        raise PreflightError("Requested goal issue must be a positive issue number")
+    issue, _ = get_page(api_url.rstrip("/") + "/repos/" + repo + "/issues/" + str(number), token)
+    if (not isinstance(issue, dict) or "pull_request" in issue or
+            type(issue.get("number")) is not int or issue["number"] != number or
+            issue.get("state") not in ("open", "closed")):
+        raise PreflightError("GitHub did not return the requested goal issue")
+    labels = issue.get("labels")
+    if not isinstance(labels, list) or any(
+        not isinstance(label, dict) or not isinstance(label.get("name"), str)
+        for label in labels
+    ):
+        raise PreflightError("GitHub returned invalid goal labels")
+    return issue["state"] == "open" and "goal-completed" not in {label["name"] for label in labels}
+
+
+def should_run(event_name: str, event: dict, discover, inspect_issue=None) -> tuple[bool, str]:
     if has_goal_command(event_name, event):
         # gh-aw's existing author/command authorization still applies.
         return True, "Explicit goal steering"
     if event_name == "workflow_dispatch":
-        issue = (event.get("inputs") or {}).get("issue", "")
-        if str(issue or "").strip():
-            return True, "Explicit goal issue request"
+        inputs = event.get("inputs") or {}
+        if not isinstance(inputs, dict):
+            raise PreflightError("Invalid workflow dispatch inputs")
+        issue = inputs.get("issue", "")
+        if issue is not None and str(issue).strip():
+            text = str(issue).strip()
+            if not re.fullmatch(r"[1-9][0-9]*", text):
+                raise PreflightError("Requested goal issue must be a positive issue number")
+            if inspect_issue is None:
+                raise PreflightError("Explicit issue inspection is required")
+            if inspect_issue(int(text)):
+                return True, "Requested goal issue is open and unfinished"
+            return False, "Requested goal issue is closed or completed; no model needed"
     elif event_name != "schedule":
         return False, "No goal command"
     if discover():
@@ -118,6 +148,11 @@ def main() -> int:
             lambda: has_open_goal(
                 os.environ.get("GITHUB_REPOSITORY", ""),
                 os.environ.get("GITHUB_TOKEN", ""),
+                os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+            ),
+            lambda number: requested_issue_is_unfinished(
+                os.environ.get("GITHUB_REPOSITORY", ""),
+                os.environ.get("GITHUB_TOKEN", ""), number,
                 os.environ.get("GITHUB_API_URL", "https://api.github.com"),
             ),
         )

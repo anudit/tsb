@@ -209,6 +209,8 @@ export async function loadEvidence({ api, repository, pull, policy, readTrustedF
       continue;
     }
     result.evidence[job.name] = {
+      runId: run.id,
+      jobId: job.id,
       conclusion: conclusionOf(job),
       completedAt: job.completed_at ?? null,
       startedAt: run.run_started_at ?? run.created_at,
@@ -224,6 +226,7 @@ export async function loadEvidence({ api, repository, pull, policy, readTrustedF
     if (Object.hasOwn(result.evidence, configured.checkName)) continue;
     if (RUNNING.has(run.status)) {
       result.evidence[configured.checkName] = {
+        runId: run.id,
         conclusion: conclusionOf(run),
         completedAt: null,
         startedAt: run.run_started_at ?? run.created_at,

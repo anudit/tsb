@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { buildDiagnosisContext } from "./diagnosis-context.mjs";
 import { loadEvidence } from "./evidence.mjs";
 import { plan, projectPolicy } from "./planner.mjs";
 
@@ -234,10 +235,15 @@ async function snapshot({
           readTrustedFile: (path) => readFileSync(path, "utf8"),
         })
       : { evidence: {}, policyAmbiguity: false, notes: [] };
+  let maintainerReviewRequired = trusted.unclassified.length > 0;
   if (candidate.state === "OPEN" && !candidate.isDraft) {
     const files = await pages(api, `repos/${repository}/pulls/${number}/files`);
-    if (files.length !== pull.changed_files || changesAutomation(files)) {
+    if (files.length !== pull.changed_files) {
       loaded.policyAmbiguity = true;
+      loaded.notes.push("The complete changed-file inventory could not be verified.");
+    }
+    if (changesAutomation(files)) {
+      maintainerReviewRequired = true;
       loaded.notes.push("Automation definition changes require maintainer review.");
     }
     if ([...latestReviews.values()].some((review) => review.state === "CHANGES_REQUESTED")) {
@@ -252,7 +258,8 @@ async function snapshot({
     evidence: loaded.evidence,
     revisions: trusted.revisions,
     handledExceptionKeys: [],
-    policyAmbiguity: Boolean(loaded.policyAmbiguity || trusted.unclassified.length),
+    maintainerReviewRequired,
+    policyAmbiguity: Boolean(loaded.policyAmbiguity),
     unknownBlockingFailure: false,
   };
   let planned = plan(input);
@@ -263,10 +270,17 @@ async function snapshot({
       .map((effect) => effect.key);
     planned = plan(input);
   }
+  const notes = [...(loaded.notes ?? []), ...trusted.unclassified];
   return {
     ...planned,
-    notes: [...(loaded.notes ?? []), ...trusted.unclassified],
+    notes,
     trustedSha: base.commit.sha,
+    diagnosisContext: buildDiagnosisContext({
+      planned,
+      notes,
+      runIds: loaded.runIds ?? [],
+      evidence: loaded.evidence,
+    }),
   };
 }
 
@@ -329,7 +343,7 @@ async function main() {
       diagnosisIsFirst(await diagnosisRuns(api, repository), effect.key, process.env.GITHUB_RUN_ID);
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `should_run=${Boolean(valid)}\nobserved_head_sha=${planned.candidate.headSha}\n`,
+      `should_run=${Boolean(valid)}\nobserved_head_sha=${planned.candidate.headSha}\ncontext_json=${valid ? JSON.stringify(planned.diagnosisContext) : ""}\n`,
     );
     return;
   }
