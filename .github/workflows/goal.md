@@ -41,6 +41,8 @@ runtimes:
     version: '3.12'
 
 jobs:
+  safe_outputs:
+    if: needs.agent.result == 'success'
   preflight:
     name: Check for Goal work without an agent
     # Cheap event filter; the helper checks exact commands and gh-aw still
@@ -148,11 +150,13 @@ steps:
       python3 .github/workflows/scripts/goal_scheduler.py
   - name: Prepare the selected goal's pinned tools
     run: |
-      cp .github/workflows/scripts/provision_agent_runtime.py /tmp/gh-aw/provision_agent_runtime.py
-      python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json --repo-root "$GITHUB_WORKSPACE"
+      python3 -I .github/workflows/scripts/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json --repo-root "$GITHUB_WORKSPACE" --stage-actions-dir "$RUNNER_TEMP/gh-aw/actions"
 
 source: githubnext/goal
-engine: copilot
+engine:
+  id: copilot
+  harness:
+    use: tsb_runtime_harness.cjs
 ---
 
 # Goal
@@ -177,14 +181,18 @@ issue number or add the `goal` label to the intended issue, then stop.
 
 At the start of every run, read `/tmp/gh-aw/goal.json`.
 
-For selected work, first source `/tmp/gh-aw/agent-runtime.env` inside the sandbox.
-Run `python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json --repo-root "$GITHUB_WORKSPACE"`
-once to refresh dependencies for the actual checkout, then run the same trusted
-helper with `--check-only --repo-root "$GITHUB_WORKSPACE"`. After
-switching/synchronizing branches, repeat this bounded refresh-then-check sequence.
-Never substitute the branch-owned helper or restage it after switching branches.
-Record the emitted versions/SHA; if refresh or checking fails, report one setup blocker, not blind
-installer retries or passing evidence. A null selection needs no setup.
+Startup automatically selects and verifies pinned tools before the agent runs.
+This proves startup health, not exact-head test results. A null selection needs
+no setup.
+
+After switching/synchronizing branches, use the absolute pinned Python executable
+recorded in the read-only `$RUNNER_TEMP/gh-aw/actions/tsb_agent_runtime_manifest.json`
+to run `$RUNNER_TEMP/gh-aw/actions/tsb_provision_agent_runtime.py` with
+`--selection "$RUNNER_TEMP/gh-aw/actions/tsb_agent_runtime_selection.json" --repo-root "$GITHUB_WORKSPACE"`,
+then repeat with `--check-only` for a bounded refresh-then-check sequence.
+Never source a writable `.env`, substitute the branch-owned helper, or restage
+trusted files. Record versions/SHA; if refresh or checking fails, report one
+setup blocker, not blind installer retries or passing evidence.
 
 Important fields:
 
