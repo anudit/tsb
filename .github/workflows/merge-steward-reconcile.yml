@@ -3,39 +3,70 @@ name: Merge Steward Reconcile
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
-  pull_request_review:
-    branches: [main]
-    types: [submitted, dismissed]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled, edited]
   workflow_run:
     workflows: [CI]
     types: [completed]
   schedule:
-    - cron: "17 * * * *"
+    - cron: '17,47 * * * *'
   workflow_dispatch:
     inputs:
       pull_request_number:
-        description: Pull request number to observe
-        required: true
+        description: Pull request number (empty reconciles all open PRs to main)
+        required: false
         type: string
       expected_head_sha:
         description: Optional expected head SHA
         required: false
         type: string
-
-concurrency:
-  group: merge-steward-reconcile-${{ github.event.pull_request.number || github.event.workflow_run.id || github.event.inputs.pull_request_number || github.run_id }}
-  cancel-in-progress: true
+      observe_only:
+        description: Preview plans without performing actions
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  actions: read
   contents: read
-  pull-requests: read
 
 jobs:
-  reconcile:
-    name: Observe merge readiness
+  resolve:
+    name: Resolve pull requests
+    if: github.event_name != 'workflow_dispatch' || github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+      count: ${{ steps.resolve.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/merge-steward/reconcile.mjs --resolve
+
+  reconcile:
+    name: Reconcile PR ${{ matrix.number }}
+    needs: resolve
+    if: needs.resolve.outputs.count != '0'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.matrix) }}
+    concurrency:
+      group: merge-steward-${{ github.repository }}-${{ matrix.number }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out trusted default branch
         uses: actions/checkout@v4
@@ -43,8 +74,10 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Plan deterministic transitions
+      - name: Reconcile current candidate
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ matrix.number }}
+          EXPECTED_HEAD_SHA: ${{ matrix.head }}
+          MERGE_STEWARD_APPLY: ${{ !(github.event_name == 'workflow_dispatch' && inputs.observe_only) }}
         run: node .github/merge-steward/reconcile.mjs

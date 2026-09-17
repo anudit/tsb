@@ -1,45 +1,72 @@
 # Merge Steward policy
 
-This policy was accepted on 2026-09-03 from the workflows and repository rules on
-the trusted `main` branch.
+Merge Steward coordinates pull requests targeting `main`. The live coordinator
+may dispatch a single, guarded Merge Steward Diagnosis workflow for an unresolved
+exception. Automatic merging is **off** and no merge adapter is installed.
 
 ## Readiness
 
-A pull request is ready when it is not a draft and fresh evidence for its exact
-head SHA has succeeded for:
+The policy retains the four CI requirements accepted on 2026-09-03:
+`Test & Lint`, `Playground E2E (Playwright)`, `Build`, and
+`Validate Python Examples`. Only `success` counts. Skipped, neutral, missing,
+stale or incomplete jobs cannot establish readiness.
 
-- `Test & Lint`
-- `Playground E2E (Playwright)`
-- `Build`
-- `Validate Python Examples`
+Evidence comes from the latest associated CI PR run, or the current internal
+Autoloop push run when no PR run exists. The coordinator verifies workflow path,
+repository, PR/head association, run attempt, job identity and trusted workflow
+contents. A run must begin after declared workflow and policy changes. Old
+success cannot hide a newer pending or failed attempt. Unclassified jobs and
+unsupported policy extensions block progress until reviewed.
 
-The repository currently requires neither approvals nor resolved review threads.
-Branch protection requires the authoritative `Test & Lint` check. Merge Steward
-records all four CI checks as policy requirements without adding a synthetic
-Steward status check.
+GitHub branch protection remains authoritative and currently requires
+`Test & Lint`; no additional required check is installed. Neither approvals nor
+resolved review threads are currently mandatory in the accepted policy. Drafts,
+`needs-review`, `mq:pause` and `mq:paused` prevent all automatic actions. A
+requested-changes review also requires human attention. PRs changing automation
+definitions require maintainer review.
 
-## Boundaries
+## Live capabilities
 
-- Operation starts in `observe` mode. The reconciler writes plans only to its
-  workflow summary.
-- Existing CI remains authoritative and continues to run on every PR change.
-  No selective workflow adapter is installed.
-- OpenEvolve is advisory and branch-conditional. Copilot setup is advisory.
-- Pages build and deployment are post-merge only and never Steward-dispatched.
-- Autoloop, Goal, Evergreen, and CI Doctor remain independent automation.
-  Steward never dispatches them. Evergreen keeps its existing opt-in behavior.
-- Diagnosis is limited to exhausted deterministic handling, unknown blocking
-  failures, and maintainer-asserted policy ambiguity for the current head. Its
-  safe outputs are staged and its agent job is read-only.
-- Routine green, waiting, stale, duplicate, and already-reported states never
-  invoke a model or post a comment.
+- Trusted default-branch code resolves candidates and reconciles each PR under
+  one concurrency group across PR, CI-completion and recovery events.
+- The coordinator reloads current PR evidence before every effect and compares
+  repository, PR, head, current base and trusted policy. A default-branch update
+  makes an in-flight effect a no-op; a subsequent event replans it.
+- Only `merge-steward-diagnose.lock.yml` is dispatchable, always from `main`.
+  Reasons are `failure-exhausted`, `unknown-failure` and `policy-ambiguity`.
+  Retry budget remains zero. Existing CI owns ordinary PR builds and retries.
+- Diagnosis reuses the deterministic planner before model activation. It must
+  match the expected head, base, policy digest and exception key, and be the
+  first workflow run for that key. Workflow-run history supplies deduplication
+  for its GitHub retention period; deleting that history also clears the record.
+- The diagnosis agent is read-only. Comment and label outputs remain staged.
+  Automatic missing-tool, incomplete-work and failure issues are disabled.
+  Results and plans appear in Actions summaries and artifacts.
+- No worker dispatch, branch update, run approval, label mutation, comment,
+  deployment or merge is performed by the coordinator. Pages, Copilot setup,
+  Autoloop, Goal, Evergreen and CI Doctor keep their existing triggers.
 
-## Native auto-merge
+Green, pending, draft, paused, stale and duplicate events never need a model.
+The coordinator exits after planning or dispatch rather than waiting for CI.
+The recovery schedule runs twice an hour and also observes review changes.
 
-Native GitHub auto-merge with squash is accepted as the eventual handoff after
-all readiness evidence is fresh. It is not live during observation. Before any
-future handoff, the deterministic reconciler must reload policy from the default
-branch, recheck the PR head and readiness, and rely on GitHub's native policy
-enforcement. It never force-pushes or lets the diagnosis agent merge.
+## Operating it
 
-The machine-readable source of truth is `.github/merge-steward.yml`.
+Run **Merge Steward Reconcile** from `main` with a PR number, or leave it empty
+for all open PRs to `main`. Set `observe_only` to preview without dispatching.
+Set `defaults.operation_mode: observe` to disable all coordinator effects.
+Existing branch rules and independent workflows remain in force.
+
+Native squash auto-merge was recorded as an eventual capability in the earlier
+observation policy. It needs a separate explicit activation decision and a
+reviewed merge adapter. A future adapter must guard the expected head and
+preserve main CI and Pages, because GitHub suppresses normal push-triggered
+workflows after merges made with `GITHUB_TOKEN`. Changing `auto_merge` alone
+cannot enable merging in this installation.
+
+The machine-readable contract is `merge-steward.yml`, validated against the
+bundled `merge-steward.schema.json`. The audited worker inventory is in
+`merge-steward-inventory.md`. Run deterministic tests with
+`node --test .github/merge-steward/*.test.mjs`; they also run inside `Test & Lint`.
+Compile the diagnosis source with `gh aw compile merge-steward-diagnose --validate`
+and commit its generated lock file together with the source.
