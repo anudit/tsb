@@ -94,7 +94,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", type=Path)
     parser.add_argument("--check-only", action="store_true")
-    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[3])
+    # This helper is staged outside the checkout before the agent changes
+    # branches. Its own path must never determine which candidate is checked.
+    parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
     try:

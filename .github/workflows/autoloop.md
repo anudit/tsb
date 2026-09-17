@@ -34,6 +34,9 @@ timeout-minutes: 45
 network:
   allowed:
   - defaults
+  # Existing branch synchronization needs HTTPS reads of this GitHub repository.
+  # Agent permissions remain read-only; publication still uses safe outputs.
+  - "https://github.com"
   - node
   - python
   - rust
@@ -133,7 +136,9 @@ steps:
     run: |
       python3 .github/workflows/scripts/autoloop_scheduler.py
   - name: Prepare the selected program's pinned tools
-    run: python3 .github/workflows/scripts/provision_agent_runtime.py --selection /tmp/gh-aw/autoloop.json
+    run: |
+      cp .github/workflows/scripts/provision_agent_runtime.py /tmp/gh-aw/provision_agent_runtime.py
+      python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/autoloop.json --repo-root "$GITHUB_WORKSPACE"
 
 source: githubnext/autoloop
 engine: copilot
@@ -146,11 +151,13 @@ features:
 
 An iterative optimization agent that proposes changes, evaluates them against a metric, and keeps only improvements — running autonomously on a schedule.
 
-For selected work, source `/tmp/gh-aw/agent-runtime.env`, then run
-`python3 .github/workflows/scripts/provision_agent_runtime.py --check-only` inside
-the sandbox. After switching/synchronizing branches, rerun it with
-`--selection /tmp/gh-aw/autoloop.json` to revalidate changed lock dependencies.
-Record the emitted versions/SHA; on failure report one setup blocker, not blind
+For selected work, first source `/tmp/gh-aw/agent-runtime.env` inside the sandbox.
+Run `python3 /tmp/gh-aw/provision_agent_runtime.py --selection /tmp/gh-aw/autoloop.json --repo-root "$GITHUB_WORKSPACE"`
+once to refresh dependencies for the actual checkout, then run the same trusted
+helper with `--check-only --repo-root "$GITHUB_WORKSPACE"`. After
+switching/synchronizing branches, repeat this bounded refresh-then-check sequence.
+Never substitute the branch-owned helper or restage it after switching branches.
+Record the emitted versions/SHA; if refresh or checking fails, report one setup blocker, not blind
 installer retries or passing evidence. A null selection needs no setup.
 
 ## Objective And Evidence Guard
