@@ -37,6 +37,8 @@ samples, not service guarantees.
 | `pages.yml#deploy` — Deploy to Pages | Advisory deployment; post-merge; needs Pages build | Low; estimate 0.2 min | Deploys Pages artifact with the same token scopes and environment `github-pages`. Live environment rules contain a branch policy, with no required reviewers or wait timer. |
 | `merge-steward-reconcile.yml#resolve` | Advisory deterministic PR resolver | Low; estimate 0.2 min | Reads trusted default-branch code and PR metadata to create the per-PR matrix; no PR code execution. |
 | `merge-steward-reconcile.yml#reconcile` | Advisory deterministic coordinator | Low; estimate 0.2 min | Reads trusted default-branch code and policy; no PR code execution. `actions:write` dispatches only guarded diagnosis; content/PR permissions are read-only. No merge adapter is installed. |
+| `wasm-verification.yml#verify` | Advisory to merge policy; current-head evidence for Wasm goals | High; budget 30 min | Path-filtered PR, main push, or manual source build, negative control, Rust and real-Wasm tests. Runs candidate code with `contents:read`, no secrets, no persisted checkout credentials; uploads evidence only. |
+| `benchmark-verification.yml#verify` | Advisory to merge policy; current-head measured tranche | High; budget 25 min | Path-filtered PR or manual exact-name selection, maximum 16 pairs, serial measurements and strict failure accounting. Read-only token, no secrets; artifact only. No duplicate main-push measurement. |
 
 CI starts naturally on PR changes targeting `main`, pushes to `main` or
 `autoloop/**`, and explicit workflow dispatch. The build's existing `needs:test`
@@ -59,6 +61,7 @@ scopes. Named tokens may have permissions beyond the workflow token scopes.
 | Workflows / generated job | Role, runner and cost | Existing privileges and external effects |
 |---|---|---|
 | Autoloop, Goal / `pre_activation` | Deterministic scheduler/filter; ubuntu-slim; low | Built-in token; no declared job write permissions. |
+| Goal / `preflight` | Deterministic nonempty-work check; ubuntu-latest; low | Reads trusted scheduling code and open goal issues; `contents:read`, `issues:read`; no model, secrets, or writes. |
 | Autoloop, Goal / `activation` | Trusted activation; ubuntu-slim; low | Reads Actions/content; writes discussions, issues and PRs for activation bookkeeping. Verifies engine and GitHub tokens. |
 | Autoloop, Goal / `agent` | Independent implementation agent; ubuntu-latest; scarce | `read-all`; runs repository code; Copilot and GitHub tokens; privileged network; proposes changes and safe outputs. |
 | Autoloop, Goal / `detection` | Output threat detection; ubuntu-latest; scarce | `contents:read` plus Copilot token; separate model cost. |

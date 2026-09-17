@@ -11,6 +11,13 @@ The policy retains the four CI requirements accepted on 2026-09-03:
 `Validate Python Examples`. Only `success` counts. Skipped, neutral, missing,
 stale or incomplete jobs cannot establish readiness.
 
+The path-filtered Wasm and bounded benchmark workers are inventoried as
+advisory to the existing merge contract: their exact-commit results are required
+by the corresponding Goal/Autoloop completion contracts, not newly installed
+repository merge gates. They execute contributor code without secrets or write
+tokens, keep failure artifacts, and are not Steward-dispatchable. Goal's cheap
+work-selection preflight is also advisory, never implementation evidence.
+
 Evidence comes from the latest associated CI PR run, or the current internal
 Autoloop push run when no PR run exists. The coordinator verifies workflow path,
 repository, PR/head association, run attempt, job identity and trusted workflow
@@ -24,6 +31,10 @@ resolved review threads are currently mandatory in the accepted policy. Drafts,
 `needs-review`, `mq:pause` and `mq:paused` prevent all automatic actions. A
 requested-changes review also requires human attention. PRs changing automation
 definitions require maintainer review.
+That known review boundary, including newly unclassified jobs, is reported
+deterministically as `attention / automation-review-required`; it never invokes
+a diagnosis agent or repeats a human comment. Unknown policy ambiguity remains
+eligible for guarded diagnosis.
 
 ## Live capabilities
 

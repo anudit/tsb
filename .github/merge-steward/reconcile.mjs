@@ -234,10 +234,15 @@ async function snapshot({
           readTrustedFile: (path) => readFileSync(path, "utf8"),
         })
       : { evidence: {}, policyAmbiguity: false, notes: [] };
+  let maintainerReviewRequired = trusted.unclassified.length > 0;
   if (candidate.state === "OPEN" && !candidate.isDraft) {
     const files = await pages(api, `repos/${repository}/pulls/${number}/files`);
-    if (files.length !== pull.changed_files || changesAutomation(files)) {
+    if (files.length !== pull.changed_files) {
       loaded.policyAmbiguity = true;
+      loaded.notes.push("The complete changed-file inventory could not be verified.");
+    }
+    if (changesAutomation(files)) {
+      maintainerReviewRequired = true;
       loaded.notes.push("Automation definition changes require maintainer review.");
     }
     if ([...latestReviews.values()].some((review) => review.state === "CHANGES_REQUESTED")) {
@@ -252,7 +257,8 @@ async function snapshot({
     evidence: loaded.evidence,
     revisions: trusted.revisions,
     handledExceptionKeys: [],
-    policyAmbiguity: Boolean(loaded.policyAmbiguity || trusted.unclassified.length),
+    maintainerReviewRequired,
+    policyAmbiguity: Boolean(loaded.policyAmbiguity),
     unknownBlockingFailure: false,
   };
   let planned = plan(input);
