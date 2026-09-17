@@ -256,7 +256,7 @@ export function rfftFreq(n: number, d = 1): number[] {
  */
 export function fftshift<T>(x: readonly T[]): T[] {
   const n = x.length;
-  const half = Math.floor(n / 2);
+  const half = Math.ceil(n / 2);
   return [...x.slice(half), ...x.slice(0, half)];
 }
 
@@ -265,7 +265,7 @@ export function fftshift<T>(x: readonly T[]): T[] {
  */
 export function ifftshift<T>(x: readonly T[]): T[] {
   const n = x.length;
-  const half = Math.ceil(n / 2);
+  const half = Math.floor(n / 2);
   return [...x.slice(half), ...x.slice(0, half)];
 }
 
@@ -660,7 +660,7 @@ export function welch(x: readonly number[], options: WelchOptions = {}): PSDResu
   const winNorm =
     scaling === "density"
       ? win.reduce((s, w) => s + w * w, 0) * fs
-      : win.reduce((s, w) => s + w * w, 0);
+      : win.reduce((s, w) => s + w, 0) ** 2;
   const nFreqs = Math.floor(nfft / 2) + 1;
   const nFrames = Math.floor((x.length - noverlap) / step);
 
@@ -758,7 +758,7 @@ export function periodogram(x: readonly number[], options: PeriodogramOptions = 
   const winNorm =
     scaling === "density"
       ? win.reduce((s, w) => s + w * w, 0) * fs
-      : win.reduce((s, w) => s + w * w, 0);
+      : win.reduce((s, w) => s + w, 0) ** 2;
 
   const seg: Complex[] = Array.from({ length: nfft }, (_, i) => ({
     re: (x[i] ?? 0) * (win[i] ?? 0),

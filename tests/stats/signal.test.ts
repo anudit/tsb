@@ -176,11 +176,11 @@ describe("fftshift / ifftshift", () => {
   test("odd length: fftshift matches numpy", () => {
     const x = [0, 1, 2, 3, 4];
     const shifted = fftshift(x);
-    expect(shifted).toEqual([2, 3, 4, 0, 1]);
+    expect(shifted).toEqual([3, 4, 0, 1, 2]);
   });
 
   test("odd length: ifftshift matches numpy", () => {
-    const x = [2, 3, 4, 0, 1];
+    const x = [3, 4, 0, 1, 2];
     const back = ifftshift(x);
     expect(back).toEqual([0, 1, 2, 3, 4]);
   });
@@ -249,10 +249,10 @@ describe("window functions", () => {
     expect(w[0]).toBeCloseTo(0.00006, 4);
   });
 
-  test("flatTopWindow — values can exceed 1", () => {
+  test("flatTopWindow — matches the normalized SciPy window", () => {
     const w = flatTopWindow(64);
-    expect(w.length).toBe(64);
-    expect(Math.max(...w)).toBeGreaterThan(1);
+    // scipy.signal.windows.flattop(64).max(), SciPy 1.18.1.
+    expect(Math.max(...w)).toBeCloseTo(0.9970330574019707, 12);
   });
 
   test("kaiserWindow — beta=0 → rectangular", () => {
@@ -422,8 +422,11 @@ describe("welch", () => {
     const x = Array.from({ length: 256 }, (_, i) => Math.sin((2 * Math.PI * i) / 256));
     const { Pxx: dens } = welch(x, { scaling: "density", nperseg: 64 });
     const { Pxx: spec } = welch(x, { scaling: "spectrum", nperseg: 64 });
-    // They should differ
-    expect(dens[0]).not.toBeCloseTo(spec[0] ?? 0, 5);
+    // scipy.signal.welch with a symmetric 64-point Hann window gives
+    // spectrum/density = fs * sum(window**2) / sum(window)**2 = 1/42.
+    for (let i = 0; i < dens.length; i++) {
+      expect(spec[i]).toBeCloseTo((dens[i] ?? 0) / 42, 12);
+    }
   });
 });
 
@@ -434,6 +437,14 @@ describe("periodogram", () => {
     const x = new Array(128).fill(0) as number[];
     const { f, Pxx } = periodogram(x);
     expect(f.length).toBe(Pxx.length);
+  });
+
+  test("rectangular-window spectrum matches SciPy without detrending", () => {
+    const options = { window: [1, 1, 1, 1], nfft: 4 };
+    const density = periodogram([1, 0, 0, 0], { ...options, scaling: "density" });
+    const spectrum = periodogram([1, 0, 0, 0], { ...options, scaling: "spectrum" });
+    expect(density.Pxx).toEqual([0.25, 0.5, 0.25]);
+    expect(spectrum.Pxx).toEqual([0.0625, 0.125, 0.0625]);
   });
 
   test("zero signal → near-zero PSD", () => {
