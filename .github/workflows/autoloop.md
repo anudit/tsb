@@ -21,6 +21,23 @@ on:
   slash_command:
     name: autoloop
 
+concurrency:
+  # Hold one work slot through safe outputs and memory publication. Non-command
+  # events keep independent groups; gh-aw still checks exact commands/auth.
+  group: >-
+    gh-aw-${{ github.repository }}-${{ github.workflow }}-${{
+      (
+        github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+        (contains(fromJSON('["issue_comment","pull_request_review_comment","discussion_comment"]'), github.event_name) && startsWith(github.event.comment.body, '/autoloop')) ||
+        (github.event_name == 'issues' && startsWith(github.event.issue.body, '/autoloop')) ||
+        (github.event_name == 'pull_request' && startsWith(github.event.pull_request.body, '/autoloop')) ||
+        (github.event_name == 'discussion' && startsWith(github.event.discussion.body, '/autoloop'))
+      ) && 'work' || github.run_id
+    }}
+  cancel-in-progress: false
+  queue: max
+  job-discriminator: ${{ github.run_id }}
+
 permissions: read-all
 
 runtimes:
