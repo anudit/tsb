@@ -6,23 +6,23 @@
 
 | Field | Value |
 |-------|-------|
-| Last Run | 2026-09-17T16:24:42Z |
-| Iteration Count | 497 |
-| Best Metric | 837 |
+| Last Run | 2026-09-17T18:54:04Z |
+| Iteration Count | 498 |
+| Best Metric | 843 |
 | Target Metric | — |
 | Branch | `autoloop/perf-comparison` |
-| PR | #461 |
+| PR | #503 |
 | Issue | #221 |
 | Paused | false |
 | Pause Reason | — |
 | Completed | false |
 | Completed Reason | — |
 | Consecutive Errors | 0 |
-| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, pending-ci |
-| Pending Tree | 4e220f1f5ee0d9173c105fce6c6123b609b18491 |
-| Pending Metric | 843 |
-| Pending Iteration | 498 |
-| Pending Run | https://github.com/githubnext/tsb/actions/runs/35244744750 |
+| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, pending-ci, accepted |
+| Pending Tree | — |
+| Pending Metric | — |
+| Pending Iteration | — |
+| Pending Run | — |
 | CI Fix Attempts | 0 |
 
 
@@ -65,13 +65,13 @@
 
 ## 📊 Iteration History
 
-### Iteration 498 — 2026-09-17T16:24:42Z — [Run](https://github.com/githubnext/tsb/actions/runs/35244744750)
+### Iteration 498 — 2026-09-17T18:54:04Z — [Run](https://github.com/githubnext/tsb/actions/runs/35260600725)
 
-- **Status**: ⏳ Pending CI (publication requested)
+- **Status**: ✅ Accepted
 - **Change**: Added `bench_fit_gev` — fitGEV (GEV distribution L-moments fitting) benchmark, N=5000 Gumbel-distributed block maxima, pure-numpy Python port with matched mulberry32 PRNG (fitted params match to ~10 sig figs)
 - **Metric**: 843 (previous best: 837, delta: +6)
-- **Commit**: 625baecd
-- **Notes**: PR created via create_pull_request; branch `autoloop/perf-comparison` had no prior remote history (previous PR closed/stale) so a fresh branch was synced from main. Awaiting CI verification on next run before acceptance.
+- **Commit**: 71681f9a
+- **Notes**: Reconciled pending candidate from prior run. Verified PR #503 head sha 1e2a1523 (tree ad30cb4d, matching commit 71681f9a) has all 4 required CI gates green (Test & Lint, Playground E2E, Build, Validate Python Examples) both on the branch-run and the PR check-runs rollup.
 
 ### Iteration 497 — 2026-09-01T07:03:02Z — [Run](https://github.com/githubnext/tsb/actions/runs/33480036252)
 
