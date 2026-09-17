@@ -291,20 +291,20 @@ function resultToDataFrame(result: SqlResult, options: ReadSqlBaseOptions): Data
 
   // Build column arrays, excluding the index column.
   const dataColumns: string[] = [];
-  const columnData: Record<string, Scalar[]> = {};
+  const columnData = new Map<string, Scalar[]>();
 
   for (const col of result.columns) {
     if (col === idxColName) {
       continue;
     }
     dataColumns.push(col);
-    columnData[col] = [];
+    columnData.set(col, []);
   }
 
   // Populate column arrays.
   for (const row of result.rows) {
     for (const col of dataColumns) {
-      const arr = columnData[col];
+      const arr = columnData.get(col);
       if (arr !== undefined) {
         const raw = row[col];
         arr.push(raw !== undefined ? sqlValueToScalar(raw) : null);
@@ -315,7 +315,7 @@ function resultToDataFrame(result: SqlResult, options: ReadSqlBaseOptions): Data
   // Parse date columns (convert to ms-since-epoch numbers).
   if (parseDates !== undefined) {
     for (const col of parseDates) {
-      const arr = columnData[col];
+      const arr = columnData.get(col);
       if (arr !== undefined) {
         for (let i = 0; i < arr.length; i++) {
           const v = arr[i];
@@ -345,7 +345,7 @@ function resultToDataFrame(result: SqlResult, options: ReadSqlBaseOptions): Data
   const rowIndex = idxColName !== null ? new Index(indexVals, idxColName) : undefined;
 
   return DataFrame.fromColumns(
-    columnData as Record<string, readonly Scalar[]>,
+    Object.fromEntries(columnData),
     rowIndex !== undefined ? { index: rowIndex } : {},
   );
 }
