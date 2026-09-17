@@ -215,32 +215,32 @@ function parseSchema(raw: unknown): AvroSchema {
   }
   if (typeof raw === "object" && raw !== null) {
     const obj = raw as Record<string, unknown>;
-    const type = obj.type;
+    const type = obj["type"];
     if (type === "record") {
-      const fields = (obj.fields as unknown[]).map((f) => {
+      const fields = (obj["fields"] as unknown[]).map((f) => {
         const field = f as Record<string, unknown>;
-        return { name: field.name as string, type: parseSchema(field.type) };
+        return { name: field["name"] as string, type: parseSchema(field["type"]) };
       });
-      return { type: "record", name: obj.name as string, fields };
+      return { type: "record", name: obj["name"] as string, fields };
     }
     if (type === "array") {
-      return { type: "array", items: parseSchema(obj.items) };
+      return { type: "array", items: parseSchema(obj["items"]) };
     }
     if (type === "map") {
-      return { type: "map", values: parseSchema(obj.values) };
+      return { type: "map", values: parseSchema(obj["values"]) };
     }
     if (type === "enum") {
       return {
         type: "enum",
-        name: obj.name as string,
-        symbols: obj.symbols as string[],
+        name: obj["name"] as string,
+        symbols: obj["symbols"] as string[],
       };
     }
     if (type === "fixed") {
       return {
         type: "fixed",
-        name: obj.name as string,
-        size: obj.size as number,
+        name: obj["name"] as string,
+        size: obj["size"] as number,
       };
     }
     // Logical types: delegate to the underlying type

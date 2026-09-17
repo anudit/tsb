@@ -390,8 +390,8 @@ describe("DLM property tests", () => {
     fc.assert(
       fc.property(
         fc.array(fc.float({ min: -100, max: 100, noNaN: true }), { minLength: 2, maxLength: 20 }),
-        fc.float({ min: 0.01, max: 10, noNaN: true }),
-        fc.float({ min: 0.01, max: 10, noNaN: true }),
+        fc.double({ min: 0.01, max: 10, noNaN: true }),
+        fc.double({ min: 0.01, max: 10, noNaN: true }),
         (y, sv, sw) => {
           const dlm = DLM.localLevel({ sigmaObs: sv, sigmaLevel: sw });
           const res = dlm.filter(y);

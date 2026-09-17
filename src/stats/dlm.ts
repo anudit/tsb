@@ -863,10 +863,10 @@ export function buildRegression(
  * observation). All component V matrices must have the same dimension.
  */
 export function combineDLMs(...specs: DLMSpec[]): DLMSpec {
-  if (specs.length === 0) {
+  const first = specs[0];
+  if (first === undefined) {
     throw new RangeError("combineDLMs requires at least one spec");
   }
-  const first = specs[0];
   let G: Mat = first.G;
   let W: Mat = first.W;
   let C0: Mat | undefined = first.C0;
@@ -891,7 +891,7 @@ export function combineDLMs(...specs: DLMSpec[]): DLMSpec {
   }
 
   // Use the first component's V (they must agree)
-  const V = specs[0]?.V;
+  const V = first.V;
   const spec: DLMSpec = {
     G,
     F: [Fcombined],
@@ -1007,7 +1007,7 @@ function nelderMead(
     // Convergence check
     const range = sf[n]! - sf[0]!;
     if (range < tol) {
-      return sx[0]?.slice();
+      return sx[0]?.slice() ?? x0.slice();
     }
 
     // Centroid of all but worst
@@ -1057,5 +1057,5 @@ function nelderMead(
       best = i;
     }
   }
-  return simplex[best]?.slice();
+  return simplex[best]?.slice() ?? x0.slice();
 }
