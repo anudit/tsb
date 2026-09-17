@@ -36,7 +36,7 @@ network:
 
 safe-outputs:
   max-patch-size: 10240
-  max-patch-files: 500
+  max-patch-files: 64
   add-comment:
     max: 7
     target: "*"
@@ -107,7 +107,8 @@ tools:
   bash: true
   repo-memory:
     branch-name: memory/autoloop
-    file-glob: ["*.md"]
+    # Slashless globs in gh-aw v0.87.10 exclude files at the memory root.
+    allowed-extensions: [".md"]
     # 30 KB per state file -- enough for the structured sections plus ~10 most-recent
     # iteration entries plus ~5 compressed-range summaries. The rolling-compaction
     # rule in "Update Rules" below keeps files under this budget. Tune up for
@@ -136,6 +137,43 @@ features:
 # Autoloop
 
 An iterative optimization agent that proposes changes, evaluates them against a metric, and keeps only improvements — running autonomously on a schedule.
+
+## Objective And Evidence Guard
+
+Apply this guard to every mode and program-specific strategy. The current
+program definition and `AGENTS.md` define the objective and allowed scope;
+repo-memory is working history, not permission to expand them. Recheck inherited
+claims against the current remote branch. Retire stale priorities that reward
+bulk domain generation, unrelated scientific modules, duplicate files, or stubs.
+Choose one small, useful checkpoint toward the actual program goal.
+
+- **Pandas parity:** name the pandas API and supported behavior being added or
+  repaired. Tests must execute the tsb operation on independently specified
+  inputs and compare with independently generated pandas results, including
+  relevant values, labels, dtypes, missing values, and errors. Reconstructing a
+  pandas expected snapshot as a tsb container and comparing it back is not
+  differential evidence. A real fix in an existing file can matter more than a
+  new file; never manufacture files to make it score.
+- **Performance:** execute each new or changed benchmark on both sides and
+  verify equivalent outputs before trusting timings. Match operation, dataset,
+  dtype, and warm-up/measurement policy; record versions, measured SHA, repeated
+  timings, and variability. Separate cold work from repeated-input cache hits;
+  do not claim sorting parity by comparing cached tsb returns with fresh pandas
+  sorts. Do not add import-time JIT primers solely to improve the benchmark.
+  Script counts or successful parsing do not prove execution or speedup.
+- **Progress:** retain the program's declared metric, but report what it
+  actually measures. Do not promote file counts or benchmark-pair counts into
+  feature parity or performance completion. A completion percentage needs an
+  explicit in-scope denominator and a verified numerator, with unsupported and
+  unverified cases separate. If these are absent, report completeness as
+  unknown. Cite current-head verification, not stale memory totals.
+
+If the evaluator conflicts with the objective, report `metric-contract-mismatch`
+with concrete evidence and the smallest proposed correction. Do not redefine
+the metric, edit protected program definitions or issue #1, raise `best_metric`,
+or claim completion. Preserve useful findings in memory without publishing
+unrelated work. A prior inflated or unverified best is not a target to beat by
+padding; ask for its evidence-based reset instead.
 
 ## Command Mode
 
@@ -206,7 +244,9 @@ The pre-step has already determined which program to run. Read `/tmp/gh-aw/autol
 - **`selected_file`**: The full path to the program's markdown file (either `.autoloop/programs/<name>/program.md`, `.autoloop/programs/<name>.md`, or `/tmp/gh-aw/issue-programs/<name>.md` for issue-based programs).
 - **`selected_issue`**: The GitHub issue number if the selected program came from an issue, or `null` if it came from a file.
 - **`selected_target_metric`**: The `target-metric` value from the program's frontmatter (a number), or `null` if the program is open-ended. Used to check the [halting condition](#halting-condition) after each accepted iteration.
-- **`selected_metric_direction`**: One of `"higher"` (default) or `"lower"`, parsed from the program's `metric_direction` frontmatter field. Determines whether **larger** or **smaller** metric values count as improvement. Used by the metric-improved check in [Step 5](#step-5-accept-or-reject), the iteration-history delta sign, and the [halting condition](#halting-condition).
+- **`selected_metric_direction`**: Optional `"higher"` or `"lower"`. Validate against the program's contract using [Metric Direction](#metric-direction), including its missing-field fallback, before comparing or accepting results.
+- **`selected_metric_direction_error`**: Contract ambiguity or conflict to report without accepting a metric.
+- **`selected_reconciliation`**: `tree` for current pending publication, `legacy` for an unresolved older candidate, or `null`. Reconcile evidence before proposing work; this is never acceptance evidence itself.
 - **`state_file_size_bytes`**: Current size of the selected program's state file in bytes (0 if it does not exist yet). Use this together with `state_file_max_bytes` to decide whether to compact aggressively this iteration (see [Update Rules](#update-rules) — when size exceeds 80% of the max, collapse older iteration entries).
 - **`state_file_max_bytes`**: The configured `max-file-size` for repo-memory state files (default `30720`, i.e. 30 KB). Files larger than this are rejected by repo-memory, breaking scheduling.
 - **`issue_programs`**: A mapping of program name → issue number for all discovered issue-based programs.
@@ -286,17 +326,18 @@ target-metric: 0.95
 
 ### Metric Direction
 
-By default Autoloop assumes **higher is better** — `best_metric` is ratcheted up each accepted iteration, and a `target-metric` is met when `best_metric >= target-metric`. Programs whose natural fitness is *lower is better* (error, latency, cost, ratio, fitness score) can opt into reversed semantics with the optional `metric_direction` field:
+Resolve metric direction from the program's evaluation contract before comparing
+results. The optional `metric_direction` frontmatter field makes it explicit:
 
 ```markdown
 ---
 schedule: every 6h
-metric_direction: lower   # defaults to "higher" if omitted
+metric_direction: lower   # smaller ratios are better
 target-metric: 0.9        # interpreted as "program is complete when best_metric ≤ 0.9"
 ---
 ```
 
-Allowed values are `higher` (default) and `lower`. Any other value is rejected at frontmatter-parse time, the scheduler logs a warning, and the program falls back to `higher`.
+Allowed values are `higher` and `lower`.
 
 When `metric_direction: lower` is set:
 
@@ -304,7 +345,12 @@ When `metric_direction: lower` is set:
 - Iteration History entries show a `-<delta>` (negative delta = improvement) instead of `+<delta>`.
 - The halting condition fires when `best_metric <= target-metric` (instead of `>=`).
 
-The agent reads `selected_metric_direction` from `/tmp/gh-aw/autoloop.json` to determine which direction applies to the current iteration. Programs that omit the field are treated as `higher` — no behaviour change for existing programs.
+Read `selected_metric_direction` from `/tmp/gh-aw/autoloop.json` when present and
+check it against the program. If the scheduler field is missing, resolve the
+explicit direction from the program frontmatter or Evaluation prose; for
+example, `tsb-perf-evolve` minimizes its ratio. If direction is ambiguous or
+conflicting, stop with `metric-contract-mismatch`. Never silently assume
+`higher`, rely on stale memory, or change the protected definition to proceed.
 
 ## Program Definition
 
@@ -393,6 +439,16 @@ durable state only in this directory; a separate clone is not persisted.
 
 If the machine state has a `Pending Tree`, reconcile it using Step 5b and end
 the run before starting Step 2.
+
+When `selected_reconciliation` is `legacy`, reconcile the newest unresolved
+population/history entry before proposing anything. Locate its recorded commit
+and run; verify publication, current branch identity, metric, and CI rather than
+trusting `pending-ci` text. Restore current pending fields only when that exact
+candidate and evidence can be established. If it was already merged, superseded,
+or cannot be verified, retire the stale pending marker with the reason; do not
+accept its claimed metric. Update the authoritative memory and end this run.
+An explicit pause or completion remains a stop; pending work only bypasses an
+automatic rejection-plateau skip.
 
 ### Step 2: Analyze and Propose
 
@@ -550,7 +606,7 @@ when `Pending Tree` is present.
    - Update **📚 Lessons Learned** if this iteration revealed something new about the problem or what works.
    - Update **🔭 Future Directions** if this iteration opened new promising paths.
 6. **Update the program issue**: edit the status comment and post a per-iteration comment on the program issue (see [Program Issue](#program-issue)). Note the fix-attempt count in the per-iteration comment if `> 0`.
-7. **Check halting condition** (see [Halting Condition](#halting-condition)): If the program has a `target-metric` in its frontmatter, compare the new `best_metric` against it using the program's metric direction (read `selected_metric_direction` from `/tmp/gh-aw/autoloop.json`):
+7. **Check halting condition** (see [Halting Condition](#halting-condition)): If the program has a `target-metric` in its frontmatter, compare the new `best_metric` against it using the validated [Metric Direction](#metric-direction):
    - `higher`: completed when `best_metric >= target-metric`.
    - `lower`: completed when `best_metric <= target-metric`.
 
@@ -665,8 +721,8 @@ Programs can be **open-ended** (run indefinitely until manually stopped) or **go
 
 1. Parse the `target-metric` value from the program's YAML frontmatter (if present).
 2. After each **accepted** iteration, compare the new `best_metric` against the `target-metric`.
-3. Determine whether the target is met based on the program's `metric_direction` (read from `selected_metric_direction` in `/tmp/gh-aw/autoloop.json`; defaults to `higher` when unset):
-   - `higher` (default): the target is met when `best_metric >= target-metric`.
+3. Determine whether the target is met using the validated [Metric Direction](#metric-direction), not an assumed scheduler default:
+   - `higher`: the target is met when `best_metric >= target-metric`.
    - `lower`: the target is met when `best_metric <= target-metric`.
 4. When the target is met, **complete** the program:
    - Set `Completed` to `true` in the state file's **⚙️ Machine State** table.
@@ -835,7 +891,7 @@ All iterations in reverse chronological order (newest first).
 | Iteration Count | integer | Total iterations completed |
 | Best Metric | number | Best metric value achieved so far |
 | Target Metric | number or `—` | Target metric from program frontmatter (halting condition). `—` if open-ended |
-| Metric Direction | `higher` or `lower` | Whether larger or smaller metric values count as improvement. Defaults to `higher` if absent (back-compat). Set from the program's `metric_direction` frontmatter field. |
+| Metric Direction | `higher` or `lower` | Validated against the current program's frontmatter or Evaluation contract; missing or conflicting evidence must not silently default. |
 | Branch | branch name | Long-running branch: `autoloop/{program-name}` |
 | PR | `#number` or `—` | Draft PR number for this program |
 | Issue | `#number` or `—` | The single program issue (`[Autoloop: {program-name}]`) for this program. Hosts the status comment, per-iteration comments, and human steering comments. |

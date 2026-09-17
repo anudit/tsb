@@ -22,12 +22,16 @@ let wasm: TsbWasmModule | null = null;
 
 beforeAll(async () => {
   wasm = await loadWasm();
+  if (wasm === null) {
+    throw new Error("WASM parity requires a loaded module. Run `bun run wasm:build` first.");
+  }
 });
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-function skip(_label: string): void {
-  // no-op: caller already returns early when wasm is null
+function failMissingWasm(label: string): void {
+  // Keep the per-test null guards type-safe, but never report missing WASM as a pass.
+  throw new Error(`WASM parity cannot run without its module: ${label}`);
 }
 
 // ─── searchsorted_f64 ────────────────────────────────────────────────────────
@@ -37,7 +41,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("left insertion at boundary", () => {
     if (wasm === null) {
-      skip("left insertion at boundary");
+      failMissingWasm("left insertion at boundary");
       return;
     }
     const arr = new Float64Array(sortedNums);
@@ -48,7 +52,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("right insertion with duplicates", () => {
     if (wasm === null) {
-      skip("right insertion with duplicates");
+      failMissingWasm("right insertion with duplicates");
       return;
     }
     const dups = [1.0, 2.0, 3.0, 3.0, 4.0];
@@ -58,7 +62,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("value less than all elements", () => {
     if (wasm === null) {
-      skip("value less than all elements");
+      failMissingWasm("value less than all elements");
       return;
     }
     const arr = new Float64Array(sortedNums);
@@ -67,7 +71,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("value greater than all elements", () => {
     if (wasm === null) {
-      skip("value greater than all elements");
+      failMissingWasm("value greater than all elements");
       return;
     }
     const arr = new Float64Array(sortedNums);
@@ -76,7 +80,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("NaN in sorted array — NaN treated as larger than all", () => {
     if (wasm === null) {
-      skip("NaN in sorted array");
+      failMissingWasm("NaN in sorted array");
       return;
     }
     const withNaN = [1.0, 2.0, Number.NaN];
@@ -89,7 +93,7 @@ describe("searchsorted_f64 parity", () => {
 
   test("empty array", () => {
     if (wasm === null) {
-      skip("empty array");
+      failMissingWasm("empty array");
       return;
     }
     const arr = new Float64Array([]);
@@ -102,7 +106,7 @@ describe("searchsorted_f64 parity", () => {
 describe("searchsorted_many_f64 parity", () => {
   test("multiple values in a sorted numeric array", () => {
     if (wasm === null) {
-      skip("multiple values");
+      failMissingWasm("multiple values");
       return;
     }
     const sorted = [1.0, 2.0, 3.0, 4.0, 5.0];
@@ -116,7 +120,7 @@ describe("searchsorted_many_f64 parity", () => {
 
   test("right side", () => {
     if (wasm === null) {
-      skip("right side");
+      failMissingWasm("right side");
       return;
     }
     const sorted = [1.0, 1.0, 2.0, 3.0];
@@ -134,7 +138,7 @@ describe("searchsorted_many_f64 parity", () => {
 describe("argsort_f64 parity", () => {
   test("ascending numeric sort", () => {
     if (wasm === null) {
-      skip("ascending numeric sort");
+      failMissingWasm("ascending numeric sort");
       return;
     }
     const arr = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0];
@@ -145,7 +149,7 @@ describe("argsort_f64 parity", () => {
 
   test("already sorted", () => {
     if (wasm === null) {
-      skip("already sorted");
+      failMissingWasm("already sorted");
       return;
     }
     const arr = [1.0, 2.0, 3.0];
@@ -155,7 +159,7 @@ describe("argsort_f64 parity", () => {
 
   test("NaN placed last", () => {
     if (wasm === null) {
-      skip("NaN placed last");
+      failMissingWasm("NaN placed last");
       return;
     }
     const arr = [2.0, Number.NaN, 1.0];
@@ -166,7 +170,7 @@ describe("argsort_f64 parity", () => {
 
   test("single element", () => {
     if (wasm === null) {
-      skip("single element");
+      failMissingWasm("single element");
       return;
     }
     expect(Array.from(wasm.argsort_f64(new Float64Array([42.0])))).toEqual([0]);
@@ -174,7 +178,7 @@ describe("argsort_f64 parity", () => {
 
   test("empty array", () => {
     if (wasm === null) {
-      skip("empty array");
+      failMissingWasm("empty array");
       return;
     }
     expect(Array.from(wasm.argsort_f64(new Float64Array([])))).toEqual([]);
@@ -188,7 +192,7 @@ describe("searchsorted_str parity", () => {
 
   test("left insertion", () => {
     if (wasm === null) {
-      skip("left insertion");
+      failMissingWasm("left insertion");
       return;
     }
     expect(wasm.searchsorted_str([...sortedStrs], "cherry", false)).toBe(
@@ -198,7 +202,7 @@ describe("searchsorted_str parity", () => {
 
   test("value not in array — between elements", () => {
     if (wasm === null) {
-      skip("value not in array");
+      failMissingWasm("value not in array");
       return;
     }
     expect(wasm.searchsorted_str([...sortedStrs], "avocado", false)).toBe(
@@ -208,7 +212,7 @@ describe("searchsorted_str parity", () => {
 
   test("value past end", () => {
     if (wasm === null) {
-      skip("value past end");
+      failMissingWasm("value past end");
       return;
     }
     expect(wasm.searchsorted_str([...sortedStrs], "zucchini", false)).toBe(
@@ -222,7 +226,7 @@ describe("searchsorted_str parity", () => {
 describe("argsort_str parity", () => {
   test("unsorted string array", () => {
     if (wasm === null) {
-      skip("unsorted string array");
+      failMissingWasm("unsorted string array");
       return;
     }
     const arr = ["cherry", "apple", "banana", "date"];
@@ -249,7 +253,7 @@ describe("nat_compare parity", () => {
   for (const [a, b] of cases) {
     test(`natCompare("${a}", "${b}")`, () => {
       if (wasm === null) {
-        skip(`natCompare("${a}", "${b}")`);
+        failMissingWasm(`natCompare("${a}", "${b}")`);
         return;
       }
       const wasmSign = Math.sign(wasm.nat_compare(a, b, false, false));
@@ -260,7 +264,7 @@ describe("nat_compare parity", () => {
 
   test("ignoreCase parity", () => {
     if (wasm === null) {
-      skip("ignoreCase parity");
+      failMissingWasm("ignoreCase parity");
       return;
     }
     const wasmSign = Math.sign(wasm.nat_compare("Apple", "apple", true, false));
@@ -270,7 +274,7 @@ describe("nat_compare parity", () => {
 
   test("reverse parity", () => {
     if (wasm === null) {
-      skip("reverse parity");
+      failMissingWasm("reverse parity");
       return;
     }
     const wasmFwd = wasm.nat_compare("file10", "file9", false, false);
@@ -284,7 +288,7 @@ describe("nat_compare parity", () => {
 describe("nat_sorted parity", () => {
   test("natural sort of file names", () => {
     if (wasm === null) {
-      skip("natural sort of file names");
+      failMissingWasm("natural sort of file names");
       return;
     }
     const arr = ["file10", "file2", "file1", "file20"];
@@ -295,7 +299,7 @@ describe("nat_sorted parity", () => {
 
   test("reverse=true", () => {
     if (wasm === null) {
-      skip("reverse=true");
+      failMissingWasm("reverse=true");
       return;
     }
     const arr = ["b", "a", "c"];
@@ -306,7 +310,7 @@ describe("nat_sorted parity", () => {
 
   test("ignoreCase=true", () => {
     if (wasm === null) {
-      skip("ignoreCase=true");
+      failMissingWasm("ignoreCase=true");
       return;
     }
     const arr = ["Banana", "apple", "Cherry"];
@@ -317,7 +321,7 @@ describe("nat_sorted parity", () => {
 
   test("empty array", () => {
     if (wasm === null) {
-      skip("empty array");
+      failMissingWasm("empty array");
       return;
     }
     expect(wasm.nat_sorted([], false, false)).toEqual([]);
@@ -325,7 +329,7 @@ describe("nat_sorted parity", () => {
 
   test("single element", () => {
     if (wasm === null) {
-      skip("single element");
+      failMissingWasm("single element");
       return;
     }
     expect(wasm.nat_sorted(["x"], false, false)).toEqual(["x"]);
@@ -337,7 +341,7 @@ describe("nat_sorted parity", () => {
 describe("nat_argsort parity", () => {
   test("argsort matches natSorted order", () => {
     if (wasm === null) {
-      skip("argsort matches natSorted order");
+      failMissingWasm("argsort matches natSorted order");
       return;
     }
     const arr = ["file10", "file2", "file1"];
@@ -348,7 +352,7 @@ describe("nat_argsort parity", () => {
 
   test("reverse=true", () => {
     if (wasm === null) {
-      skip("reverse=true");
+      failMissingWasm("reverse=true");
       return;
     }
     const arr = ["a", "c", "b"];
@@ -359,7 +363,7 @@ describe("nat_argsort parity", () => {
 
   test("ignoreCase=true", () => {
     if (wasm === null) {
-      skip("ignoreCase=true");
+      failMissingWasm("ignoreCase=true");
       return;
     }
     const arr = ["Banana", "apple", "Cherry"];
@@ -374,7 +378,7 @@ describe("nat_argsort parity", () => {
 describe("sum_f64 parity", () => {
   test("basic sum", () => {
     if (wasm === null) {
-      skip("basic sum");
+      failMissingWasm("basic sum");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -383,7 +387,7 @@ describe("sum_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     const arr = new Float64Array([1.0, Number.NaN, 3.0]);
@@ -392,7 +396,7 @@ describe("sum_f64 parity", () => {
 
   test("empty array returns 0", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.sum_f64(new Float64Array([]))).toBe(0.0);
@@ -400,7 +404,7 @@ describe("sum_f64 parity", () => {
 
   test("all-NaN returns 0", () => {
     if (wasm === null) {
-      skip("all-NaN");
+      failMissingWasm("all-NaN");
       return;
     }
     expect(wasm.sum_f64(new Float64Array([Number.NaN, Number.NaN]))).toBe(0.0);
@@ -410,7 +414,7 @@ describe("sum_f64 parity", () => {
 describe("mean_f64 parity", () => {
   test("basic mean", () => {
     if (wasm === null) {
-      skip("basic mean");
+      failMissingWasm("basic mean");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -419,7 +423,7 @@ describe("mean_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     const arr = new Float64Array([1.0, Number.NaN, 5.0]);
@@ -428,7 +432,7 @@ describe("mean_f64 parity", () => {
 
   test("empty array returns NaN", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.mean_f64(new Float64Array([]))).toBeNaN();
@@ -438,7 +442,7 @@ describe("mean_f64 parity", () => {
 describe("min_f64 parity", () => {
   test("basic min", () => {
     if (wasm === null) {
-      skip("basic min");
+      failMissingWasm("basic min");
       return;
     }
     const arr = new Float64Array([3.0, 1.0, 4.0, 1.5]);
@@ -447,7 +451,7 @@ describe("min_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     expect(wasm.min_f64(new Float64Array([Number.NaN, 2.0, 1.0]))).toBe(1.0);
@@ -455,7 +459,7 @@ describe("min_f64 parity", () => {
 
   test("empty array returns NaN", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.min_f64(new Float64Array([]))).toBeNaN();
@@ -465,7 +469,7 @@ describe("min_f64 parity", () => {
 describe("max_f64 parity", () => {
   test("basic max", () => {
     if (wasm === null) {
-      skip("basic max");
+      failMissingWasm("basic max");
       return;
     }
     const arr = new Float64Array([3.0, 1.0, 4.0, 1.5]);
@@ -474,7 +478,7 @@ describe("max_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     expect(wasm.max_f64(new Float64Array([Number.NaN, 2.0, 5.0]))).toBe(5.0);
@@ -482,7 +486,7 @@ describe("max_f64 parity", () => {
 
   test("empty array returns NaN", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.max_f64(new Float64Array([]))).toBeNaN();
@@ -492,7 +496,7 @@ describe("max_f64 parity", () => {
 describe("var_f64 parity", () => {
   test("known variance (ddof=1)", () => {
     if (wasm === null) {
-      skip("known variance");
+      failMissingWasm("known variance");
       return;
     }
     // Variance of [2, 4, 4, 4, 5, 5, 7, 9] = 4.571...
@@ -502,7 +506,7 @@ describe("var_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     const arr = new Float64Array([2.0, Number.NaN, 4.0]);
@@ -511,7 +515,7 @@ describe("var_f64 parity", () => {
 
   test("single element returns NaN (ddof=1 makes n-1=0)", () => {
     if (wasm === null) {
-      skip("single element");
+      failMissingWasm("single element");
       return;
     }
     expect(wasm.var_f64(new Float64Array([5.0]), 1)).toBeNaN();
@@ -521,7 +525,7 @@ describe("var_f64 parity", () => {
 describe("std_f64 parity", () => {
   test("basic std (ddof=1)", () => {
     if (wasm === null) {
-      skip("basic std");
+      failMissingWasm("basic std");
       return;
     }
     const arr = new Float64Array([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
@@ -530,7 +534,7 @@ describe("std_f64 parity", () => {
 
   test("empty returns NaN", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.std_f64(new Float64Array([]), 1)).toBeNaN();
@@ -540,7 +544,7 @@ describe("std_f64 parity", () => {
 describe("median_f64 parity", () => {
   test("odd count median", () => {
     if (wasm === null) {
-      skip("odd count");
+      failMissingWasm("odd count");
       return;
     }
     expect(wasm.median_f64(new Float64Array([3.0, 1.0, 2.0]))).toBe(2.0);
@@ -548,7 +552,7 @@ describe("median_f64 parity", () => {
 
   test("even count median is average of two middle", () => {
     if (wasm === null) {
-      skip("even count");
+      failMissingWasm("even count");
       return;
     }
     expect(wasm.median_f64(new Float64Array([1.0, 2.0, 3.0, 4.0]))).toBe(2.5);
@@ -556,7 +560,7 @@ describe("median_f64 parity", () => {
 
   test("NaN values are skipped", () => {
     if (wasm === null) {
-      skip("NaN skipped");
+      failMissingWasm("NaN skipped");
       return;
     }
     expect(wasm.median_f64(new Float64Array([1.0, Number.NaN, 3.0]))).toBe(2.0);
@@ -564,7 +568,7 @@ describe("median_f64 parity", () => {
 
   test("empty returns NaN", () => {
     if (wasm === null) {
-      skip("empty");
+      failMissingWasm("empty");
       return;
     }
     expect(wasm.median_f64(new Float64Array([]))).toBeNaN();
@@ -576,7 +580,7 @@ describe("median_f64 parity", () => {
 describe("rolling_sum_f64 parity", () => {
   test("basic rolling sum (window=3)", () => {
     if (wasm === null) {
-      skip("rolling sum");
+      failMissingWasm("rolling sum");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -590,7 +594,7 @@ describe("rolling_sum_f64 parity", () => {
 
   test("min_periods=1 produces earlier results", () => {
     if (wasm === null) {
-      skip("min_periods=1");
+      failMissingWasm("min_periods=1");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0]);
@@ -604,7 +608,7 @@ describe("rolling_sum_f64 parity", () => {
 describe("rolling_mean_f64 parity", () => {
   test("basic rolling mean (window=3)", () => {
     if (wasm === null) {
-      skip("rolling mean");
+      failMissingWasm("rolling mean");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0, 4.0, 5.0]);
@@ -622,7 +626,7 @@ describe("rolling_mean_f64 parity", () => {
 describe("expanding_mean_f64 parity", () => {
   test("cumulative mean grows correctly", () => {
     if (wasm === null) {
-      skip("expanding mean");
+      failMissingWasm("expanding mean");
       return;
     }
     const arr = new Float64Array([1.0, 3.0, 5.0]);
@@ -636,7 +640,7 @@ describe("expanding_mean_f64 parity", () => {
 describe("expanding_sum_f64 parity", () => {
   test("cumulative sum", () => {
     if (wasm === null) {
-      skip("expanding sum");
+      failMissingWasm("expanding sum");
       return;
     }
     const arr = new Float64Array([1.0, 2.0, 3.0]);
