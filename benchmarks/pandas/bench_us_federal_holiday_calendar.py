@@ -14,8 +14,8 @@ from pandas.tseries.holiday import USFederalHolidayCalendar
 WARMUP = 5
 ITERATIONS = 50
 
-start_date = pd.Timestamp("1980-01-01")
-end_date = pd.Timestamp("2029-12-31")
+start_date = pd.Timestamp("1990-01-01")
+end_date = pd.Timestamp("2039-12-31")
 
 for _ in range(WARMUP):
     cal = USFederalHolidayCalendar()

@@ -10,8 +10,8 @@ import { USFederalHolidayCalendar } from "../../src/index.ts";
 const WARMUP = 5;
 const ITERATIONS = 50;
 
-const startDate = new Date("1980-01-01");
-const endDate = new Date("2029-12-31");
+const startDate = new Date("1990-01-01");
+const endDate = new Date("2039-12-31");
 
 for (let i = 0; i < WARMUP; i++) {
   const cal = new USFederalHolidayCalendar();
