@@ -36,8 +36,42 @@ import { assertMatchesSnapshotStrict } from "./strict_compare.ts";
 
 const SNAPSHOT_PATH = join(import.meta.dir, "..", "..", "golden", "snapshots", "scenario_7.json");
 
+/**
+ * Structural check that the parsed JSON has the shape of a `ScenarioSnapshot`
+ * before it is used as one, avoiding an unchecked `as ScenarioSnapshot` cast
+ * on `JSON.parse`'s `unknown` output.
+ */
+function isScenarioSnapshotShape(value: unknown): value is ScenarioSnapshot {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record["snapshotVersion"] === "number" &&
+    typeof record["scenario"] === "string" &&
+    typeof record["title"] === "string" &&
+    typeof record["pandasVersion"] === "string" &&
+    typeof record["numpyVersion"] === "string" &&
+    Array.isArray(record["steps"]) &&
+    record["steps"].every(
+      (step) =>
+        typeof step === "object" &&
+        step !== null &&
+        typeof (step as Record<string, unknown>)["step"] === "number" &&
+        typeof (step as Record<string, unknown>)["kind"] === "string",
+    )
+  );
+}
+
+function assertScenarioSnapshot(value: unknown): ScenarioSnapshot {
+  if (!isScenarioSnapshotShape(value)) {
+    throw new Error(`${SNAPSHOT_PATH}: parsed JSON does not match the ScenarioSnapshot shape`);
+  }
+  return value;
+}
+
 function loadScenario7Snapshot(): ScenarioSnapshot {
-  return JSON.parse(readFileSync(SNAPSHOT_PATH, "utf-8")) as ScenarioSnapshot;
+  return assertScenarioSnapshot(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf-8")));
 }
 
 function stepFor(snapshot: ScenarioSnapshot, number: number): SnapshotStep {
@@ -177,5 +211,32 @@ describe("scenario_7: comparator regression — numeric label must not equal str
     expect(() =>
       assertMatchesSnapshotStrict(stringLabeled, stepExpectingStringLabel),
     ).not.toThrow();
+  });
+});
+
+describe("scenario_7: comparator regression — Series shape mismatch must be rejected", () => {
+  it("rejects a length-5 actual Series with a matching index against a step declaring shape [999]", () => {
+    // A comparator that never checks `step.shape` for the Series branch could
+    // pass a wrong-length actual Series as long as its index values happen to
+    // line up positionally. This probe uses an index that matches
+    // `actual.index` exactly (so index/value assertions alone would not
+    // catch the mismatch) but declares an unrelated `step.shape` of `[999]`.
+    const actual = new Series<Scalar>({ data: [1, 2, 3, 4, 5], index: [0, 1, 2, 3, 4] });
+    const stepWithWrongShape: SnapshotStep = {
+      step: 9002,
+      kind: "series",
+      operation: "comparator regression: Series shape mismatch",
+      shape: [999],
+      dtype: "integer",
+      name: { kind: "NaN" },
+      index: { kind: "index", dtype: "integer", name: null, values: [0, 1, 2, 3, 4] },
+      data: [1, 2, 3, 4, 5],
+    };
+
+    expect(() => assertMatchesSnapshotStrict(actual, stepWithWrongShape)).toThrow();
+
+    // Control: the same actual Series with the correct declared shape passes.
+    const stepWithCorrectShape: SnapshotStep = { ...stepWithWrongShape, shape: [5] };
+    expect(() => assertMatchesSnapshotStrict(actual, stepWithCorrectShape)).not.toThrow();
   });
 });

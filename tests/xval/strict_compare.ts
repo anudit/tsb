@@ -31,7 +31,8 @@ function isEncodedNaN(value: JsonValue): value is EncodedNaN {
     typeof value === "object" &&
     value !== null &&
     !Array.isArray(value) &&
-    (value as EncodedNaN).kind === "NaN"
+    "kind" in value &&
+    value.kind === "NaN"
   );
 }
 
@@ -62,11 +63,12 @@ function assertJsonEqual(actual: JsonValue, expected: JsonValue, context: string
   if (Array.isArray(actual) || Array.isArray(expected)) {
     expect(Array.isArray(actual), context).toBe(true);
     expect(Array.isArray(expected), context).toBe(true);
-    const actualArray = actual as readonly JsonValue[];
-    const expectedArray = expected as readonly JsonValue[];
-    expect(actualArray.length, context).toBe(expectedArray.length);
-    for (let i = 0; i < expectedArray.length; i++) {
-      assertJsonEqual(actualArray[i] ?? null, expectedArray[i] ?? null, `${context}.${i}`);
+    if (!(Array.isArray(actual) && Array.isArray(expected))) {
+      return;
+    }
+    expect(actual.length, context).toBe(expected.length);
+    for (let i = 0; i < expected.length; i++) {
+      assertJsonEqual(actual[i] ?? null, expected[i] ?? null, `${context}.${i}`);
     }
     return;
   }
@@ -84,10 +86,14 @@ function encodeRuntimeScalar(value: Scalar): JsonValue {
   if (value instanceof Date) {
     return value.toISOString();
   }
-  if (Array.isArray(value)) {
-    return value.map((item) => encodeRuntimeScalar(item as Scalar));
+  if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+    return value;
   }
-  return value as JsonValue;
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  // TimedeltaLike: the only remaining Scalar variant, identified structurally.
+  return value.totalMs;
 }
 
 function expectIndex(index: SnapshotIndex | undefined): SnapshotIndex {
@@ -97,18 +103,26 @@ function expectIndex(index: SnapshotIndex | undefined): SnapshotIndex {
   return index;
 }
 
+function isMatrix(data: SnapshotStep["data"]): data is readonly (readonly JsonValue[])[] {
+  return Array.isArray(data) && (data.length === 0 || Array.isArray(data[0]));
+}
+
+function isVector(data: SnapshotStep["data"]): data is readonly JsonValue[] {
+  return Array.isArray(data) && (data.length === 0 || !Array.isArray(data[0]));
+}
+
 function expectMatrix(step: SnapshotStep): readonly (readonly JsonValue[])[] {
-  if (!Array.isArray(step.data) || (step.data.length > 0 && !Array.isArray(step.data[0]))) {
+  if (!isMatrix(step.data)) {
     throw new Error(`STEP ${step.step}: expected matrix data`);
   }
-  return step.data as readonly (readonly JsonValue[])[];
+  return step.data;
 }
 
 function expectVector(step: SnapshotStep): readonly JsonValue[] {
-  if (!Array.isArray(step.data) || (step.data.length > 0 && Array.isArray(step.data[0]))) {
+  if (!isVector(step.data)) {
     throw new Error(`STEP ${step.step}: expected vector data`);
   }
-  return step.data as readonly JsonValue[];
+  return step.data;
 }
 
 /**
@@ -131,11 +145,10 @@ export function assertMatchesSnapshotStrict(actual: TsbResult, step: SnapshotSte
     assertSeriesStrict(actual, step);
     return;
   }
-  assertJsonEqual(
-    encodeRuntimeScalar(actual as Scalar),
-    step.value ?? null,
-    `STEP ${step.step} scalar`,
-  );
+  if (actual instanceof DataFrame || actual instanceof Series) {
+    throw new Error(`STEP ${step.step}: expected a scalar result`);
+  }
+  assertJsonEqual(encodeRuntimeScalar(actual), step.value ?? null, `STEP ${step.step} scalar`);
 }
 
 function assertDataFrameStrict(actual: DataFrame, step: SnapshotStep): void {
@@ -145,7 +158,7 @@ function assertDataFrameStrict(actual: DataFrame, step: SnapshotStep): void {
 
   expect([...actual.shape], `STEP ${step.step} shape`).toEqual([...(step.shape ?? [])]);
 
-  const actualColumnLabels = [...actual.columns.values] as readonly Label[];
+  const actualColumnLabels = actual.columns.values;
   expect(actualColumnLabels.length, `STEP ${step.step} column count`).toBe(
     expectedColumnLabels.length,
   );
@@ -157,7 +170,7 @@ function assertDataFrameStrict(actual: DataFrame, step: SnapshotStep): void {
     );
   }
 
-  const actualRowLabels = [...actual.index.values] as readonly Label[];
+  const actualRowLabels = actual.index.values;
   expect(actualRowLabels.length, `STEP ${step.step} row count`).toBe(expectedRowLabels.length);
   for (let i = 0; i < expectedRowLabels.length; i++) {
     assertLabelStrictlyEqual(
@@ -175,7 +188,7 @@ function assertDataFrameStrict(actual: DataFrame, step: SnapshotStep): void {
     expect(actualRow?.length, `STEP ${step.step} row ${row} length`).toBe(expectedRow?.length);
     for (let col = 0; col < expectedColumnLabels.length; col++) {
       assertJsonEqual(
-        encodeRuntimeScalar(actualRow?.[col] as Scalar),
+        encodeRuntimeScalar(actualRow?.[col] ?? null),
         expectedRow?.[col] ?? null,
         `STEP ${step.step} [${row}, ${col}]`,
       );
@@ -190,7 +203,9 @@ function assertSeriesStrict(actual: Series<Scalar>, step: SnapshotStep): void {
   const expectedValues = expectVector(step);
   const expectedRowLabels = expectIndex(step.index).values.map((value) => decodeLabel(value));
 
-  const actualRowLabels = [...actual.index.values] as readonly Label[];
+  expect([...actual.shape], `STEP ${step.step} shape`).toEqual([...(step.shape ?? [])]);
+
+  const actualRowLabels = actual.index.values;
   expect(actualRowLabels.length, `STEP ${step.step} row count`).toBe(expectedRowLabels.length);
   for (let i = 0; i < expectedRowLabels.length; i++) {
     assertLabelStrictlyEqual(
@@ -203,7 +218,7 @@ function assertSeriesStrict(actual: Series<Scalar>, step: SnapshotStep): void {
   expect(actual.values.length, `STEP ${step.step} value count`).toBe(expectedValues.length);
   for (let pos = 0; pos < expectedValues.length; pos++) {
     assertJsonEqual(
-      encodeRuntimeScalar(actual.values[pos] as Scalar),
+      encodeRuntimeScalar(actual.values[pos] ?? null),
       expectedValues[pos] ?? null,
       `STEP ${step.step} [${pos}]`,
     );
