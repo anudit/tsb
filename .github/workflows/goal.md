@@ -17,6 +17,37 @@ on:
 
 permissions: read-all
 
+jobs:
+  preflight:
+    name: Check for Goal work without an agent
+    # Cheap event filter; the helper checks exact commands and gh-aw still
+    # enforces command-author authorization before activating the agent.
+    if: >-
+      github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+      (contains(fromJSON('["issue_comment","pull_request_review_comment","discussion_comment"]'), github.event_name) && startsWith(github.event.comment.body, '/goal')) ||
+      (github.event_name == 'issues' && startsWith(github.event.issue.body, '/goal')) ||
+      (github.event_name == 'pull_request' && startsWith(github.event.pull_request.body, '/goal')) ||
+      (github.event_name == 'discussion' && startsWith(github.event.discussion.body, '/goal'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    outputs:
+      should_run: ${{ steps.evaluate.outputs.should_run }}
+    steps:
+      - name: Check out trusted scheduling code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.repository.default_branch }}
+          persist-credentials: false
+      - id: evaluate
+        name: Check active goals or explicit steering
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/workflows/scripts/goal_preflight.py
+
+if: needs.preflight.outputs.should_run == 'true'
+
 timeout-minutes: 60
 max-daily-ai-credits: 200K
 
@@ -74,7 +105,8 @@ tools:
   bash: true
   repo-memory:
     branch-name: memory/goal
-    file-glob: ["*.md"]
+    # Slashless globs in gh-aw v0.87.10 exclude files at the memory root.
+    allowed-extensions: [".md"]
     max-file-size: 40960
 
 imports:
@@ -97,6 +129,12 @@ engine: copilot
 
 You are the Goal workflow. Your job is to keep working an open GitHub issue
 labeled `goal` until its completion contract is satisfied by concrete evidence.
+
+The deterministic preflight skips scheduled or untargeted runs when there are
+no open, unfinished goal issues. Explicit issue requests and slash-command
+steering still reach this workflow. API errors fail visibly rather than being
+reported as an empty queue. The scheduler below still chooses the issue only
+after durable repo-memory has been restored.
 
 Take heed of slash-command instructions: "${{ steps.sanitized.outputs.text }}"
 
@@ -341,6 +379,11 @@ Summary:
 ```
 
 ## Completion
+
+Verification must execute the implementation, not just materialize expected
+snapshots. Count the assertions actually exercised and identify the runtime
+used (for example, Wasm rather than its fallback). Missing-runtime early returns
+and silently skipped tests are missing evidence, never a passing contract.
 
 When the completion contract is satisfied:
 

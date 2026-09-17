@@ -9,6 +9,10 @@ Actions' 20.5 KB per-expression limit.
 import os, json, re, glob, sys
 import urllib.request, urllib.error
 from datetime import datetime, timezone, timedelta
+from autoloop_policy import (
+    automatic_skip_reason, metric_direction, parse_machine_state,
+    pending_candidate_kind, state_metadata,
+)
 
 programs_dir = ".autoloop/programs"
 autoloop_dir = ".autoloop/programs"
@@ -73,49 +77,18 @@ forced_program = os.environ.get("AUTOLOOP_PROGRAM", "").strip()
 # The single repo-memory tool has id "default", independently of its branch name.
 # Use the same directory the framework clones and uploads after the agent.
 repo_memory_dir = "/tmp/gh-aw/repo-memory/default"
-
-def parse_machine_state(content):
-    """Parse the ⚙️ Machine State table from a state file. Returns a dict."""
-    state = {}
-    m = re.search(r'## ⚙️ Machine State.*?\n(.*?)(?=\n## |\Z)', content, re.DOTALL)
-    if not m:
-        return state
-    section = m.group(0)
-    for row in re.finditer(r'\|\s*(.+?)\s*\|\s*(.+?)\s*\|', section):
-        raw_key = row.group(1).strip()
-        raw_val = row.group(2).strip()
-        if raw_key.lower() in ("field", "---", ":---", ":---:", "---:"):
-            continue
-        key = raw_key.lower().replace(" ", "_")
-        val = None if raw_val in ("—", "-", "") else raw_val
-        state[key] = val
-    # Coerce types
-    for int_field in ("iteration_count", "consecutive_errors"):
-        if int_field in state:
-            try:
-                state[int_field] = int(state[int_field])
-            except (ValueError, TypeError):
-                state[int_field] = 0
-    if "paused" in state:
-        state["paused"] = str(state.get("paused", "")).lower() == "true"
-    if "completed" in state:
-        state["completed"] = str(state.get("completed", "")).lower() == "true"
-    # recent_statuses: stored as comma-separated words (e.g. "accepted, rejected, error")
-    rs_raw = state.get("recent_statuses") or ""
-    if rs_raw:
-        state["recent_statuses"] = [s.strip().lower() for s in rs_raw.split(",") if s.strip()]
-    else:
-        state["recent_statuses"] = []
-    return state
+state_documents = {}
 
 def read_program_state(program_name):
     """Read scheduling state from the repo-memory state file."""
     state_file = os.path.join(repo_memory_dir, f"{program_name}.md")
     if not os.path.isfile(state_file):
+        state_documents[program_name] = ""
         print(f"  {program_name}: no state file found (first run)")
         return {}
     with open(state_file, encoding="utf-8") as f:
         content = f.read()
+    state_documents[program_name] = content
     return parse_machine_state(content)
 
 # Bootstrap: create autoloop programs directory and template if missing
@@ -281,6 +254,8 @@ due = []
 skipped = []
 unconfigured = []
 all_programs = {}  # name -> file path (populated during scanning)
+program_directions = {}
+program_reconciliation = {}
 
 # Schedule string to timedelta
 def parse_schedule(s):
@@ -345,6 +320,8 @@ for pf in program_files:
 
     # Read state from repo-memory
     state = read_program_state(name)
+    program_directions[name] = metric_direction(content)
+    program_reconciliation[name] = pending_candidate_kind(state, state_documents[name])
     if state:
         print(f"  {name}: last_run={state.get('last_run')}, iteration_count={state.get('iteration_count')}")
     else:
@@ -358,20 +335,11 @@ for pf in program_files:
         except ValueError:
             pass
 
-    # Check if completed (target metric was reached)
-    if str(state.get("completed", "")).lower() == "true":
-        skipped.append({"name": name, "reason": f"completed: target metric reached"})
-        continue
-
-    # Check if paused (e.g., plateau or recurring errors)
-    if state.get("paused"):
-        skipped.append({"name": name, "reason": f"paused: {state.get('pause_reason', 'unknown')}"})
-        continue
-
-    # Auto-pause on plateau: 5+ consecutive rejections
-    recent = state.get("recent_statuses", [])[-5:]
-    if len(recent) >= 5 and all(s == "rejected" for s in recent):
-        skipped.append({"name": name, "reason": "plateau: 5 consecutive rejections"})
+    # An explicit stop wins; automatic plateau detection must not strand
+    # an unresolved current or legacy candidate before the agent can reconcile it.
+    stop_reason = automatic_skip_reason(state, state_documents[name])
+    if stop_reason:
+        skipped.append({"name": name, "reason": stop_reason})
         continue
 
     # Check if due based on per-program schedule
@@ -544,6 +512,10 @@ result = {
     "selected_file": selected_file,
     "selected_issue": selected_issue,
     "selected_target_metric": selected_target_metric,
+    "selected_metric_direction": program_directions.get(selected, (None, None))[0],
+    "selected_metric_direction_error": program_directions.get(selected, (None, None))[1],
+    "selected_reconciliation": program_reconciliation.get(selected),
+    **state_metadata(state_documents.get(selected, "")),
     "existing_pr": existing_pr,
     "head_branch": head_branch,
     "issue_programs": {name: info["issue_number"] for name, info in issue_programs.items()},

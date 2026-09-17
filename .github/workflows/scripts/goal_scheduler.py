@@ -29,6 +29,11 @@ REPO_MEMORY_DIR = "/tmp/gh-aw/repo-memory/default"
 OUTPUT_DIR = "/tmp/gh-aw"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "goal.json")
 
+
+class SchedulerError(RuntimeError):
+    """Required GitHub evidence is unavailable; do not schedule a guessed state."""
+
+
 REQUIRED_SECTIONS = {
     "goal": ("goal",),
     "completion_contract": ("completion contract", "definition of done"),
@@ -86,8 +91,8 @@ def _http_get_json(url: str, headers: dict[str, str], timeout: int = 30):
             body = json.loads(response.read().decode())
             link_header = response.headers.get("link") or response.headers.get("Link")
             return body, link_header
-    except (urllib.error.URLError, urllib.error.HTTPError, ValueError, OSError):
-        return None, None
+    except (urllib.error.URLError, ValueError, OSError) as error:
+        raise SchedulerError("Could not read required scheduling evidence from GitHub") from error
 
 
 def extract_markdown_sections(markdown: str) -> dict[str, str]:
@@ -200,7 +205,7 @@ def fetch_goal_issues(repo: str, github_token: str, http_get_json=_http_get_json
     """Fetch open issues with the goal label."""
 
     if not repo or not github_token:
-        return []
+        raise SchedulerError("Goal discovery requires a repository and GitHub token")
 
     headers = {
         "Authorization": "token {}".format(github_token),
@@ -212,14 +217,26 @@ def fetch_goal_issues(repo: str, github_token: str, http_get_json=_http_get_json
         "?labels={}&state=open&per_page=100".format(repo, label)
     )
     issues = []
+    visited = set()
     while next_url:
+        if next_url in visited:
+            raise SchedulerError("GitHub repeated a goal issue page")
+        visited.add(next_url)
         body, link_header = http_get_json(next_url, headers)
         if not isinstance(body, list):
-            break
+            raise SchedulerError("GitHub did not return a goal issue list")
         for issue in body:
-            if not isinstance(issue, dict) or issue.get("pull_request"):
+            if not isinstance(issue, dict):
+                raise SchedulerError("GitHub returned an invalid goal issue")
+            if issue.get("pull_request"):
                 continue
-            labels = [label_obj.get("name") for label_obj in issue.get("labels", [])]
+            label_objects = issue.get("labels")
+            if not isinstance(label_objects, list) or any(
+                not isinstance(label_obj, dict) or not isinstance(label_obj.get("name"), str)
+                for label_obj in label_objects
+            ):
+                raise SchedulerError("GitHub returned invalid goal labels")
+            labels = [label_obj["name"] for label_obj in label_objects]
             if COMPLETED_LABEL in labels:
                 continue
             issues.append(issue)
@@ -231,7 +248,7 @@ def find_existing_pr_for_branch(repo: str, branch: str, github_token: str, http_
     """Return the open PR number for a branch, if one exists."""
 
     if not repo or not branch or not github_token:
-        return None
+        raise SchedulerError("PR discovery requires a repository, branch, and GitHub token")
     owner = repo.split("/", 1)[0]
     headers = {
         "Authorization": "token {}".format(github_token),
@@ -240,10 +257,15 @@ def find_existing_pr_for_branch(repo: str, branch: str, github_token: str, http_
     head = urllib.parse.quote("{}:{}".format(owner, branch), safe="")
     url = "https://api.github.com/repos/{}/pulls?head={}&state=open".format(repo, head)
     body, _ = http_get_json(url, headers)
-    if isinstance(body, list) and body:
+    if not isinstance(body, list):
+        raise SchedulerError("GitHub did not return a pull request list")
+    if body:
+        if not isinstance(body[0], dict):
+            raise SchedulerError("GitHub returned an invalid pull request")
         number = body[0].get("number")
-        if number:
-            return number
+        if not isinstance(number, int) or isinstance(number, bool) or number <= 0:
+            raise SchedulerError("GitHub returned an invalid pull request number")
+        return number
     return None
 
 
@@ -301,13 +323,16 @@ def main() -> int:
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    issues = fetch_goal_issues(repo, github_token)
-    goals = [issue_to_goal(issue, repo, github_token) for issue in issues]
-    selected, deferred, error = select_goal(goals, forced_issue)
+    try:
+        issues = fetch_goal_issues(repo, github_token)
+        goals = [issue_to_goal(issue, repo, github_token) for issue in issues]
+        selected, deferred, error = select_goal(goals, forced_issue)
+    except SchedulerError as failure:
+        goals, selected, deferred, error = [], None, [], str(failure)
 
     output = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "no_goals": not goals,
+        "no_goals": not goals if not error else False,
         "selected": selected,
         "deferred": deferred,
         "error": error,
