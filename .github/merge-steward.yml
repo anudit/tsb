@@ -1,9 +1,9 @@
-# yaml-language-server: $schema=https://github.com/githubnext/mq/raw/main/.agents/skills/merge-steward-builder/assets/merge-steward.schema.json
+# yaml-language-server: $schema=merge-steward.schema.json
 version: 1
 
 defaults:
-  operation_mode: observe
-  auto_merge: "on"
+  operation_mode: orchestrate
+  auto_merge: "off"
   merge_method: squash
   base_strategy: on-conflict
   max_parallel_cost: medium
@@ -218,7 +218,7 @@ jobs:
       subject: latest-base
       invalidated_by: [any-base-change, workflow-change, policy-change]
     approval:
-      mode: always
+      mode: never
       environment: github-pages
     risk:
       executes_pr_code: false
@@ -372,7 +372,7 @@ jobs:
 
   merge-steward-reconcile:
     source: .github/workflows/merge-steward-reconcile.yml#reconcile
-    check_name: Observe merge readiness
+    check_name: Reconcile PR <number>
     provides: [merge-steward-advisory-plan]
     necessity:
       level: advisory
@@ -384,9 +384,9 @@ jobs:
     risk:
       executes_pr_code: false
       secrets: []
-      permissions: ["actions:read", "contents:read", "pull-requests:read"]
+      permissions: ["actions:write", "contents:read", "pull-requests:read"]
       network: internet
-      external_writes: []
+      external_writes: [diagnosis-dispatch]
     cost:
       tier: low
       expected_minutes: 0.2
@@ -436,7 +436,7 @@ jobs:
     risk:
       executes_pr_code: false
       secrets: []
-      permissions: ["checks:read", "contents:read", "pull-requests:read"]
+      permissions: ["actions:read", "checks:read", "contents:read", "pull-requests:read"]
       network: internet
       external_writes: []
     cost:
@@ -444,6 +444,31 @@ jobs:
       expected_minutes: 0.2
       runner: ubuntu-latest
     phase: final-candidate
+    failure:
+      automatic_retries: 0
+      diagnose: false
+
+  merge-steward-resolve:
+    source: .github/workflows/merge-steward-reconcile.yml#resolve
+    check_name: Resolve pull requests
+    provides: [merge-steward-candidate-discovery]
+    necessity:
+      level: advisory
+    freshness:
+      subject: every-head
+      invalidated_by: [any-head-change, workflow-change, policy-change]
+    approval:
+      mode: never
+    risk:
+      executes_pr_code: false
+      secrets: []
+      permissions: ["contents:read", "pull-requests:read"]
+      network: internet
+      external_writes: []
+    cost:
+      tier: low
+      runner: ubuntu-latest
+    phase: on-change
     failure:
       automatic_retries: 0
       diagnose: false
