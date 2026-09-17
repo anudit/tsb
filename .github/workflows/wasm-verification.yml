@@ -1,0 +1,120 @@
+name: Wasm verification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "rust/**"
+      - "src/**"
+      - "tests/core/**"
+      - "tests/wasm/**"
+      - "tests/setup.ts"
+      - "package.json"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "tsconfig.json"
+      - "biome.json"
+      - ".github/workflows/wasm-verification.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rust/**"
+      - "src/**"
+      - "tests/core/**"
+      - "tests/wasm/**"
+      - "tests/setup.ts"
+      - "package.json"
+      - "bun.lock"
+      - "bunfig.toml"
+      - "tsconfig.json"
+      - "biome.json"
+      - ".github/workflows/wasm-verification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  verify:
+    name: Build and verify real Wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.2"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install pinned Wasm build tooling
+        run: npm install --global wasm-pack@0.15.0
+
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Record source and toolchain
+        run: |
+          mkdir -p "$RUNNER_TEMP/wasm-verification"
+          {
+            git rev-parse HEAD
+            bun --version
+            rustc --version
+            cargo --version
+            wasm-pack --version
+          } | tee "$RUNNER_TEMP/wasm-verification/provenance.txt"
+
+      - name: Rust unit tests
+        run: cargo test --locked --manifest-path rust/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/wasm-verification/rust-tests.txt"
+
+      - name: Verify missing Wasm cannot pass parity
+        run: |
+          if [ -d rust/pkg ]; then
+            mv rust/pkg "$RUNNER_TEMP/committed-wasm-pkg"
+          fi
+          if bun test ./tests/wasm/parity.test.ts > "$RUNNER_TEMP/wasm-verification/missing-module.txt" 2>&1; then
+            echo "::error::Wasm parity passed without its required module."
+            exit 1
+          fi
+          grep -F "WASM parity requires a loaded module" "$RUNNER_TEMP/wasm-verification/missing-module.txt"
+
+      - name: Build Wasm from source, without committed binaries
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg rust/ -- --locked 2>&1 | tee "$RUNNER_TEMP/wasm-verification/build.txt"
+          sha256sum rust/pkg/tsb_wasm_bg.wasm | tee "$RUNNER_TEMP/wasm-verification/wasm-sha256.txt"
+
+      - name: Required Wasm parity tests
+        run: bun test ./tests/wasm/ 2>&1 | tee "$RUNNER_TEMP/wasm-verification/parity-tests.txt"
+
+      - name: Core regressions
+        run: bun test ./tests/core/ 2>&1 | tee "$RUNNER_TEMP/wasm-verification/core-tests.txt"
+
+      - name: Strict typecheck
+        run: bun run typecheck 2>&1 | tee "$RUNNER_TEMP/wasm-verification/typecheck.txt"
+
+      - name: Lint
+        run: bun run lint 2>&1 | tee "$RUNNER_TEMP/wasm-verification/lint.txt"
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/wasm-verification/
+            rust/pkg/tsb_wasm_bg.wasm
+          if-no-files-found: error
