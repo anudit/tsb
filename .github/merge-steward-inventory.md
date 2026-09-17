@@ -36,7 +36,7 @@ samples, not service guarantees.
 | `pages.yml#build` — Build Playground | Advisory; post-merge, current base | High; total Pages run 14–33 min in three samples | Runs trusted branch builds, benchmarks and Python examples; uploads Pages artifact and configures Pages. Inherits `contents:read`, `pages:write`, `id-token:write`; internet. |
 | `pages.yml#deploy` — Deploy to Pages | Advisory deployment; post-merge; needs Pages build | Low; estimate 0.2 min | Deploys Pages artifact with the same token scopes and environment `github-pages`. Live environment rules contain a branch policy, with no required reviewers or wait timer. |
 | `merge-steward-reconcile.yml#resolve` | Advisory deterministic PR resolver | Low; estimate 0.2 min | Reads trusted default-branch code and PR metadata to create the per-PR matrix; no PR code execution. |
-| `merge-steward-reconcile.yml#reconcile` | Advisory deterministic coordinator | Low; estimate 0.2 min | Reads trusted default-branch code and policy; does not execute PR code. Its installed permissions and effects are defined in its workflow and policy. |
+| `merge-steward-reconcile.yml#reconcile` | Advisory deterministic coordinator | Low; estimate 0.2 min | Reads trusted default-branch code and policy; no PR code execution. `actions:write` dispatches only guarded diagnosis; content/PR permissions are read-only. No merge adapter is installed. |
 
 CI starts naturally on PR changes targeting `main`, pushes to `main` or
 `autoloop/**`, and explicit workflow dispatch. The build's existing `needs:test`
@@ -81,7 +81,8 @@ scopes. Named tokens may have permissions beyond the workflow token scopes.
 | Merge Steward Diagnosis / `activation` | Trusted activation; ubuntu-slim; low | Actions/content reads and engine/token verification. |
 | Merge Steward Diagnosis / `agent` | Exception-only investigator; ubuntu-latest; scarce | Read permissions for Actions, checks, content, issues and PRs; Copilot/GitHub tokens; no PR code execution. |
 | Merge Steward Diagnosis / `detection` | Output threat detection; ubuntu-latest; scarce | `contents:read` plus Copilot token. |
-| Merge Steward Diagnosis / `safe_outputs`, `conclusion` | Staged output processing and reporting; ubuntu-slim; low | Before this activation audit, staged safe outputs had no workflow write scopes, but generated conclusion had Actions/issues writes and automatic issue-reporting enabled. The installed source/lock pair defines the reviewed current reporting boundary. |
+| Merge Steward Diagnosis / `safe_outputs` | Staged output processing; ubuntu-slim; low | Empty workflow permissions; proposed comments and labels are staged, not published. |
+| Merge Steward Diagnosis / `conclusion` | Usage bookkeeping and reporting; ubuntu-slim; low | `actions:write` for usage cache/artifacts. Automatic failure, missing-tool and incomplete-work issues are disabled; no content/issues/PR write scope. |
 
 Source timeout budgets are 45 minutes for Autoloop, 60 minutes for Goal and
 Evergreen, and 10 minutes for CI Doctor and Steward Diagnosis. Actual duration
