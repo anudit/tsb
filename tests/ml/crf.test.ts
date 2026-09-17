@@ -2,17 +2,25 @@
  * Tests for src/ml/crf.ts
  */
 import { describe, expect, it } from "bun:test";
-import { viterbiDecode, forwardLogZ, sequenceScore, crfNegLogLikelihood, logSumExp } from "../../src/index.ts";
+import { crfNegLogLikelihood, forwardLogZ, logSumExp, viterbiDecode } from "../../src/index.ts";
 import type { CRFParams } from "../../src/index.ts";
 
 function makeCRFParams(): CRFParams {
   const numTags = 3;
   const seqLen = 4;
   const emissionScores = new Float64Array([
-    1, 0, 0,   // t=0: prefer tag 0
-    0, 2, 0,   // t=1: prefer tag 1
-    0, 0, 3,   // t=2: prefer tag 2
-    1, 0, 0,   // t=3: prefer tag 0
+    1,
+    0,
+    0, // t=0: prefer tag 0
+    0,
+    2,
+    0, // t=1: prefer tag 1
+    0,
+    0,
+    3, // t=2: prefer tag 2
+    1,
+    0,
+    0, // t=3: prefer tag 0
   ]);
   const transitionScores = new Float64Array(numTags * numTags).fill(0);
   const startScores = new Float64Array([1, 0, 0]); // start with tag 0
@@ -33,7 +41,7 @@ describe("viterbiDecode", () => {
   it("score is finite", () => {
     const params = makeCRFParams();
     const result = viterbiDecode(params);
-    expect(isFinite(result.score)).toBe(true);
+    expect(Number.isFinite(result.score)).toBe(true);
   });
 });
 

@@ -2,11 +2,7 @@
  * Tests for src/ml/attention.ts
  */
 import { describe, expect, it } from "bun:test";
-import {
-  sinusoidalPositionalEncoding,
-  causalMask,
-  applyRoPE,
-} from "../../src/index.ts";
+import { applyRoPE, causalMask, sinusoidalPositionalEncoding } from "../../src/index.ts";
 
 describe("sinusoidalPositionalEncoding", () => {
   it("returns correct dimensions", () => {
@@ -27,9 +23,9 @@ describe("causalMask", () => {
   it("upper triangle is -Infinity", () => {
     const mask = causalMask(3);
     // (0,1), (0,2), (1,2) should be -Infinity
-    expect(mask[0 * 3 + 1]).toBe(-Infinity);
-    expect(mask[0 * 3 + 2]).toBe(-Infinity);
-    expect(mask[1 * 3 + 2]).toBe(-Infinity);
+    expect(mask[0 * 3 + 1]).toBe(Number.NEGATIVE_INFINITY);
+    expect(mask[0 * 3 + 2]).toBe(Number.NEGATIVE_INFINITY);
+    expect(mask[1 * 3 + 2]).toBe(Number.NEGATIVE_INFINITY);
   });
 
   it("diagonal is 0", () => {
@@ -49,8 +45,8 @@ describe("applyRoPE", () => {
     const x = new Float64Array([1, 0, 1, 0, 0, 1, 0, 1]); // seqLen=2, dHead=4
     const out = applyRoPE(x, 2, 4);
     // Each 2D pair should have same norm as input pair
-    const normIn = Math.sqrt((x[0]! ** 2) + (x[1]! ** 2));
-    const normOut = Math.sqrt((out[0]! ** 2) + (out[1]! ** 2));
+    const normIn = Math.sqrt(x[0]! ** 2 + x[1]! ** 2);
+    const normOut = Math.sqrt(out[0]! ** 2 + out[1]! ** 2);
     expect(normOut).toBeCloseTo(normIn, 5);
   });
 });

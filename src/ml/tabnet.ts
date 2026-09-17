@@ -171,7 +171,7 @@ export function aggregateSteps(stepOutputs: Float64Array[]): Float64Array {
   const agg = new Float64Array(dim);
   for (const out of stepOutputs) {
     for (let i = 0; i < dim; i++) {
-      agg[i] += Math.max(out[i] ?? 0, 0); // ReLU + sum
+      agg[i] = (agg[i] ?? 0) + Math.max(out[i] ?? 0, 0); // ReLU + sum
     }
   }
   return agg;
@@ -184,7 +184,7 @@ export function featureImportance(masks: Float64Array[]): Float64Array {
   const importance = new Float64Array(n);
   for (const mask of masks) {
     for (let i = 0; i < n; i++) {
-      importance[i] += Math.abs(mask[i] ?? 0);
+      importance[i] = (importance[i] ?? 0) + Math.abs(mask[i] ?? 0);
     }
   }
   // Normalize

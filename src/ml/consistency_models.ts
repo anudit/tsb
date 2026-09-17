@@ -40,24 +40,23 @@ export function karrasNoiseLevels(config: ConsistencyConfig): Float64Array {
   const levels = new Float64Array(N + 1);
   for (let i = 0; i <= N; i++) {
     const frac = i / N;
-    levels[i] =
-      (epsilon ** (1 / rho) + frac * (T ** (1 / rho) - epsilon ** (1 / rho))) ** rho;
+    levels[i] = (epsilon ** (1 / rho) + frac * (T ** (1 / rho) - epsilon ** (1 / rho))) ** rho;
   }
   return levels;
 }
 
 /** Skip function c_skip(sigma): scaling for input. */
-export function cSkip(sigma: number, sigmaData: number = 0.5): number {
-  return sigmaData * sigmaData / (sigma * sigma + sigmaData * sigmaData);
+export function cSkip(sigma: number, sigmaData = 0.5): number {
+  return (sigmaData * sigmaData) / (sigma * sigma + sigmaData * sigmaData);
 }
 
 /** Output function c_out(sigma): scaling for network output. */
-export function cOut(sigma: number, sigmaData: number = 0.5): number {
+export function cOut(sigma: number, sigmaData = 0.5): number {
   return (sigma * sigmaData) / Math.sqrt(sigma * sigma + sigmaData * sigmaData);
 }
 
 /** Input scaling c_in(sigma). */
-export function cIn(sigma: number, sigmaData: number = 0.5): number {
+export function cIn(sigma: number, sigmaData = 0.5): number {
   return 1 / Math.sqrt(sigma * sigma + sigmaData * sigmaData);
 }
 
@@ -79,7 +78,7 @@ export function consistencyFunction(
   xt: Float64Array,
   sigma: number,
   fTheta: Float64Array,
-  sigmaData: number = 0.5,
+  sigmaData = 0.5,
 ): Float64Array {
   const skip = cSkip(sigma, sigmaData);
   const out = cOut(sigma, sigmaData);
@@ -91,7 +90,7 @@ export function consistencyFunction(
 }
 
 /** Compute preconditioning-scaled input for the network. */
-export function preconditionInput(x: Float64Array, sigma: number, sigmaData: number = 0.5): Float64Array {
+export function preconditionInput(x: Float64Array, sigma: number, sigmaData = 0.5): Float64Array {
   const scale = cIn(sigma, sigmaData);
   const out = new Float64Array(x.length);
   for (let i = 0; i < x.length; i++) out[i] = scale * (x[i] ?? 0);
@@ -99,7 +98,7 @@ export function preconditionInput(x: Float64Array, sigma: number, sigmaData: num
 }
 
 /** Pseudo-Huber loss (smooth L1-like). */
-export function pseudoHuberLoss(a: Float64Array, b: Float64Array, c: number = 0.00054): number {
+export function pseudoHuberLoss(a: Float64Array, b: Float64Array, c = 0.00054): number {
   let total = 0;
   for (let i = 0; i < a.length; i++) {
     const d = (a[i] ?? 0) - (b[i] ?? 0);
@@ -182,6 +181,6 @@ export function updateEMAWeights(
 }
 
 /** Compute adaptive EMA decay for consistency distillation. */
-export function adaptiveEMADecay(iteration: number, mu0: number = 0.95, s0: number = 10): number {
-  return Math.exp(s0 * Math.log(mu0) / Math.max(iteration, 1));
+export function adaptiveEMADecay(iteration: number, mu0 = 0.95, s0 = 10): number {
+  return Math.exp((s0 * Math.log(mu0)) / Math.max(iteration, 1));
 }

@@ -8,7 +8,7 @@
  * @module
  */
 
-import { buildTree, treePredict, type TreeParams, type TreeNode } from "./gradient_boosting.ts";
+import { type TreeNode, type TreeParams, buildTree, treePredict } from "./gradient_boosting.ts";
 
 /** Random Forest configuration. */
 export interface RandomForestConfig {
@@ -45,7 +45,10 @@ function bootstrapSample(n: number, size: number, rng: LCGRandom): number[] {
 }
 
 function selectFeatures(numFeatures: number, maxFeatures: number, rng: LCGRandom): number[] {
-  const k = maxFeatures <= 0 ? Math.max(1, Math.floor(Math.sqrt(numFeatures))) : Math.min(maxFeatures, numFeatures);
+  const k =
+    maxFeatures <= 0
+      ? Math.max(1, Math.floor(Math.sqrt(numFeatures)))
+      : Math.min(maxFeatures, numFeatures);
   const all = Array.from({ length: numFeatures }, (_, i) => i);
   // Fisher-Yates shuffle and take first k
   for (let i = numFeatures - 1; i > 0; i--) {
@@ -90,7 +93,10 @@ export function fitRandomForest(
 
   for (let t = 0; t < cfg.nEstimators; t++) {
     const indices = bootstrapSample(n, sampleSize, rng);
-    const k = cfg.maxFeatures <= 0 ? Math.max(1, Math.floor(Math.sqrt(numFeatures))) : Math.min(cfg.maxFeatures, numFeatures);
+    const k =
+      cfg.maxFeatures <= 0
+        ? Math.max(1, Math.floor(Math.sqrt(numFeatures)))
+        : Math.min(cfg.maxFeatures, numFeatures);
     const featureSubset = selectFeatures(numFeatures, k, rng);
     featureMaps.push(featureSubset);
 
@@ -155,8 +161,8 @@ export function oobError(
       const xi = X[i]!;
       const projected = new Float64Array(featureMap.length);
       for (let j = 0; j < featureMap.length; j++) projected[j] = xi[featureMap[j]!] ?? 0;
-      oobPreds[i] += treePredict(model.trees[t]!, [projected])[0] ?? 0;
-      oobCounts[i]++;
+      oobPreds[i] = (oobPreds[i] ?? 0) + (treePredict(model.trees[t]!, [projected])[0] ?? 0);
+      oobCounts[i] = (oobCounts[i] ?? 0) + 1;
     }
   }
 

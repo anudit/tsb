@@ -3,16 +3,16 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
-  rbfKernel,
-  maternKernel52,
   cholesky,
+  expectedImprovement,
   gpPredict,
+  initBOState,
+  maternKernel52,
   normalCDF,
   normalPDF,
-  expectedImprovement,
-  upperConfidenceBound,
-  initBOState,
+  rbfKernel,
   suggestNext,
+  upperConfidenceBound,
 } from "../../src/index.ts";
 
 describe("kernels", () => {
@@ -65,7 +65,7 @@ describe("gpPredict", () => {
           K[i * 3 + j] = k;
           K[j * 3 + i] = k;
         }
-        K[i * 3 + i] += 0.01;
+        K[i * 3 + i] = (K[i * 3 + i] ?? 0) + 0.01;
       }
       return { kernelMatrix: K, cholesky: cholesky(K, 3) };
     })();

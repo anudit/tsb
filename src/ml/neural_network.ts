@@ -83,8 +83,8 @@ export function softmaxCrossEntropy(
   labels: Float64Array,
 ): { loss: number; dLogits: Float64Array } {
   const n = logits.length;
-  let maxLogit = -Infinity;
-  for (let i = 0; i < n; i++) maxLogit = Math.max(maxLogit, logits[i] ?? -Infinity);
+  let maxLogit = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < n; i++) maxLogit = Math.max(maxLogit, logits[i] ?? Number.NEGATIVE_INFINITY);
 
   let sumExp = 0;
   const probs = new Float64Array(n);
@@ -114,7 +114,7 @@ export function mseLoss(
   for (let i = 0; i < pred.length; i++) {
     const d = (pred[i] ?? 0) - (target[i] ?? 0);
     loss += d * d;
-    dPred[i] = 2 * d / pred.length;
+    dPred[i] = (2 * d) / pred.length;
   }
   return { loss: loss / pred.length, dPred };
 }
@@ -133,20 +133,24 @@ export interface AdamState {
 /** Initialize Adam optimizer state for a parameter vector. */
 export function initAdam(
   paramSize: number,
-  lr: number = 1e-3,
-  beta1: number = 0.9,
-  beta2: number = 0.999,
-  eps: number = 1e-8,
+  lr = 1e-3,
+  beta1 = 0.9,
+  beta2 = 0.999,
+  eps = 1e-8,
 ): AdamState {
-  return { m: new Float64Array(paramSize), v: new Float64Array(paramSize), t: 0, lr, beta1, beta2, eps };
+  return {
+    m: new Float64Array(paramSize),
+    v: new Float64Array(paramSize),
+    t: 0,
+    lr,
+    beta1,
+    beta2,
+    eps,
+  };
 }
 
 /** Adam update step: modifies params in-place, returns updated AdamState. */
-export function adamStep(
-  params: Float64Array,
-  grads: Float64Array,
-  state: AdamState,
-): AdamState {
+export function adamStep(params: Float64Array, grads: Float64Array, state: AdamState): AdamState {
   const { lr, beta1, beta2, eps } = state;
   const t = state.t + 1;
   const m = new Float64Array(params.length);
@@ -156,23 +160,23 @@ export function adamStep(
     const g = grads[i] ?? 0;
     m[i] = beta1 * (state.m[i] ?? 0) + (1 - beta1) * g;
     v[i] = beta2 * (state.v[i] ?? 0) + (1 - beta2) * g * g;
-    const mHat = (m[i] ?? 0) / (1 - Math.pow(beta1, t));
-    const vHat = (v[i] ?? 0) / (1 - Math.pow(beta2, t));
-    params[i] = (params[i] ?? 0) - lr * mHat / (Math.sqrt(vHat) + eps);
+    const mHat = (m[i] ?? 0) / (1 - beta1 ** t);
+    const vHat = (v[i] ?? 0) / (1 - beta2 ** t);
+    params[i] = (params[i] ?? 0) - (lr * mHat) / (Math.sqrt(vHat) + eps);
   }
 
   return { ...state, m, v, t };
 }
 
 /** He initialization for ReLU networks. */
-export function heInit(inDim: number, outDim: number, rngSeed: number = 42): Float64Array {
+export function heInit(inDim: number, outDim: number, rngSeed = 42): Float64Array {
   const weights = new Float64Array(outDim * inDim);
   let state = rngSeed >>> 0;
   const std = Math.sqrt(2 / inDim);
   for (let i = 0; i < weights.length; i++) {
     // Box-Muller transform for Gaussian noise
     state = (Math.imul(1664525, state) + 1013904223) >>> 0;
-    const u1 = (state / 4294967296) || 1e-10;
+    const u1 = state / 4294967296 || 1e-10;
     state = (Math.imul(1664525, state) + 1013904223) >>> 0;
     const u2 = state / 4294967296;
     weights[i] = std * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);

@@ -3,14 +3,14 @@
  */
 import { describe, expect, it } from "bun:test";
 import {
+  adamStep,
   denseForward,
+  heInit,
+  initAdam,
+  mseLoss,
   relu,
   sigmoidActivation,
   softmaxCrossEntropy,
-  mseLoss,
-  initAdam,
-  adamStep,
-  heInit,
 } from "../../src/index.ts";
 
 describe("denseForward", () => {
@@ -84,14 +84,17 @@ describe("mseLoss", () => {
 });
 
 describe("adamStep", () => {
-  it("reduces a simple parameter towards zero", () => {
+  it("matches the bias-corrected update for a constant unit gradient", () => {
     const params = new Float64Array([1.0]);
     const grads = new Float64Array([1.0]);
     let state = initAdam(1);
     for (let i = 0; i < 100; i++) {
       state = adamStep(params, grads, state);
     }
-    expect(params[0]!).toBeLessThan(0.9);
+    // Both bias-corrected moments are 1, so epsilon makes each update
+    // slightly smaller than the learning rate.
+    expect(params[0]).toBeCloseTo(1 - (100 * 0.001) / (1 + 1e-8), 12);
+    expect(state.t).toBe(100);
   });
 });
 

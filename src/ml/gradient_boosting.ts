@@ -24,9 +24,7 @@ export interface TreeParams {
 export function treePredictOne(node: TreeNode, x: Float64Array): number {
   if (node.kind === "leaf") return node.value;
   const val = x[node.featureIndex] ?? 0;
-  return val <= node.threshold
-    ? treePredictOne(node.left, x)
-    : treePredictOne(node.right, x);
+  return val <= node.threshold ? treePredictOne(node.left, x) : treePredictOne(node.right, x);
 }
 
 /** Predict for an array of samples. */
@@ -61,7 +59,7 @@ function findBestSplit(
 ): { featureIndex: number; threshold: number; gain: number } | null {
   const parentMean = meanAt(y, indices);
   const parentMSE = mseAt(y, indices, parentMean);
-  let bestGain = -Infinity;
+  let bestGain = Number.NEGATIVE_INFINITY;
   let bestFeature = 0;
   let bestThreshold = 0;
 
@@ -83,7 +81,9 @@ function findBestSplit(
     }
   }
 
-  return bestGain > 0 ? { featureIndex: bestFeature, threshold: bestThreshold, gain: bestGain } : null;
+  return bestGain > 0
+    ? { featureIndex: bestFeature, threshold: bestThreshold, gain: bestGain }
+    : null;
 }
 
 /** Build a regression tree on gradient residuals. */
@@ -148,10 +148,10 @@ export function mseGradient(y: Float64Array, yPred: Float64Array): Float64Array 
 export function fitGBM(
   X: Float64Array[],
   y: Float64Array,
-  nEstimators: number = 100,
-  learningRate: number = 0.1,
-  maxDepth: number = 3,
-  minSamplesLeaf: number = 1,
+  nEstimators = 100,
+  learningRate = 0.1,
+  maxDepth = 3,
+  minSamplesLeaf = 1,
 ): GBMEnsemble {
   const n = y.length;
   let sumY = 0;

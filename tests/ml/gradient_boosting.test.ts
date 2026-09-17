@@ -2,7 +2,15 @@
  * Tests for src/ml/gradient_boosting.ts
  */
 import { describe, expect, it } from "bun:test";
-import { buildTree, treePredict, treePredictOne, fitGBM, predictGBM, mse, r2Score } from "../../src/index.ts";
+import {
+  buildTree,
+  fitGBM,
+  mse,
+  predictGBM,
+  r2Score,
+  treePredict,
+  treePredictOne,
+} from "../../src/index.ts";
 
 describe("decision tree", () => {
   const X: Float64Array[] = [

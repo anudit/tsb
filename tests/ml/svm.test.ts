@@ -2,7 +2,7 @@
  * Tests for src/ml/svm.ts
  */
 import { describe, expect, it } from "bun:test";
-import { computeKernel, fitSVM, svmPredict, svmAccuracy } from "../../src/index.ts";
+import { computeKernel, fitSVM, svmAccuracy, svmPredict } from "../../src/index.ts";
 
 describe("computeKernel", () => {
   it("linear kernel is dot product", () => {
@@ -21,8 +21,10 @@ describe("computeKernel", () => {
 
 describe("fitSVM — linearly separable", () => {
   const X: Float64Array[] = [
-    new Float64Array([-2]), new Float64Array([-1]),
-    new Float64Array([1]), new Float64Array([2]),
+    new Float64Array([-2]),
+    new Float64Array([-1]),
+    new Float64Array([1]),
+    new Float64Array([2]),
   ];
   const y = new Float64Array([-1, -1, 1, 1]);
 

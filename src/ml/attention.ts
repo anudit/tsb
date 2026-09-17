@@ -36,11 +36,7 @@ function splitHeads(
 }
 
 /** Concatenate per-head outputs back into [seqLen x dModel]. */
-function mergeHeads(
-  heads: Float64Array[],
-  seqLen: number,
-  dModel: number,
-): Float64Array {
+function mergeHeads(heads: Float64Array[], seqLen: number, dModel: number): Float64Array {
   const numHeads = heads.length;
   const dHead = Math.floor(dModel / numHeads);
   const out = new Float64Array(seqLen * dModel);
@@ -78,14 +74,16 @@ function singleHeadAttention(
   }
   // Softmax
   for (let i = 0; i < seqLen; i++) {
-    let maxVal = -Infinity;
-    for (let j = 0; j < seqLen; j++) maxVal = Math.max(maxVal, attn[i * seqLen + j] ?? -Infinity);
+    let maxVal = Number.NEGATIVE_INFINITY;
+    for (let j = 0; j < seqLen; j++)
+      maxVal = Math.max(maxVal, attn[i * seqLen + j] ?? Number.NEGATIVE_INFINITY);
     let sumExp = 0;
     for (let j = 0; j < seqLen; j++) {
       attn[i * seqLen + j] = Math.exp((attn[i * seqLen + j] ?? 0) - maxVal);
       sumExp += attn[i * seqLen + j] ?? 0;
     }
-    for (let j = 0; j < seqLen; j++) attn[i * seqLen + j] = (attn[i * seqLen + j] ?? 0) / (sumExp || 1);
+    for (let j = 0; j < seqLen; j++)
+      attn[i * seqLen + j] = (attn[i * seqLen + j] ?? 0) / (sumExp || 1);
   }
   // A V
   const out = new Float64Array(seqLen * dHead);
@@ -129,7 +127,9 @@ export function multiHeadAttention(
 
   for (let t = 0; t < seqLen; t++) {
     for (let o = 0; o < dModel; o++) {
-      let q = 0, k = 0, v = 0;
+      let q = 0;
+      let k = 0;
+      let v = 0;
       for (let i = 0; i < dModel; i++) {
         q += (weights.Wq[o * dModel + i] ?? 0) * (query[t * dModel + i] ?? 0);
         k += (weights.Wk[o * dModel + i] ?? 0) * (key[t * dModel + i] ?? 0);
@@ -172,7 +172,7 @@ export function sinusoidalPositionalEncoding(seqLen: number, dModel: number): Fl
   const pe = new Float64Array(seqLen * dModel);
   for (let pos = 0; pos < seqLen; pos++) {
     for (let i = 0; i < dModel; i += 2) {
-      const angle = pos / Math.pow(10000, i / dModel);
+      const angle = pos / 10000 ** (i / dModel);
       pe[pos * dModel + i] = Math.sin(angle);
       if (i + 1 < dModel) pe[pos * dModel + i + 1] = Math.cos(angle);
     }
@@ -196,7 +196,7 @@ export function addPositionalEncoding(
 
 /** Causal (autoregressive) attention mask. */
 export function causalMask(seqLen: number): Float64Array {
-  const mask = new Float64Array(seqLen * seqLen).fill(-Infinity);
+  const mask = new Float64Array(seqLen * seqLen).fill(Number.NEGATIVE_INFINITY);
   for (let i = 0; i < seqLen; i++) {
     for (let j = 0; j <= i; j++) {
       mask[i * seqLen + j] = 0;
@@ -210,12 +210,12 @@ export function applyRoPE(
   x: Float64Array,
   seqLen: number,
   dHead: number,
-  baseFreq: number = 10000,
+  baseFreq = 10000,
 ): Float64Array {
   const out = new Float64Array(x.length);
   for (let pos = 0; pos < seqLen; pos++) {
     for (let i = 0; i < dHead; i += 2) {
-      const theta = pos / Math.pow(baseFreq, i / dHead);
+      const theta = pos / baseFreq ** (i / dHead);
       const cos = Math.cos(theta);
       const sin = Math.sin(theta);
       const x0 = x[pos * dHead + i] ?? 0;

@@ -24,28 +24,24 @@ export interface SVMKernelConfig {
 }
 
 /** Compute kernel between two vectors. */
-export function computeKernel(
-  x1: Float64Array,
-  x2: Float64Array,
-  config: SVMKernelConfig,
-): number {
+export function computeKernel(x1: Float64Array, x2: Float64Array, config: SVMKernelConfig): number {
   if (config.type === "linear") {
     let dot = 0;
     for (let i = 0; i < x1.length; i++) dot += (x1[i] ?? 0) * (x2[i] ?? 0);
     return dot;
-  } else if (config.type === "rbf") {
+  }
+  if (config.type === "rbf") {
     let sqDist = 0;
     for (let i = 0; i < x1.length; i++) {
       const d = (x1[i] ?? 0) - (x2[i] ?? 0);
       sqDist += d * d;
     }
     return Math.exp(-config.gamma * sqDist);
-  } else {
-    // Polynomial
-    let dot = 0;
-    for (let i = 0; i < x1.length; i++) dot += (x1[i] ?? 0) * (x2[i] ?? 0);
-    return (config.gamma * dot + config.coef0) ** config.degree;
   }
+  // Polynomial
+  let dot = 0;
+  for (let i = 0; i < x1.length; i++) dot += (x1[i] ?? 0) * (x2[i] ?? 0);
+  return (config.gamma * dot + config.coef0) ** config.degree;
 }
 
 /** Trained SVM model. */
@@ -67,7 +63,8 @@ export function svmDecision(model: SVMModel, x: Float64Array): number {
   for (let i = 0; i < model.supportVectors.length; i++) {
     const alpha = model.alphas[i] ?? 0;
     if (Math.abs(alpha) < 1e-8) continue;
-    sum += alpha * (model.labels[i] ?? 0) * computeKernel(model.supportVectors[i]!, x, model.kernel);
+    sum +=
+      alpha * (model.labels[i] ?? 0) * computeKernel(model.supportVectors[i]!, x, model.kernel);
   }
   return sum;
 }
@@ -85,10 +82,10 @@ export function svmPredict(model: SVMModel, X: Float64Array[]): Int8Array {
 export function fitSVM(
   X: Float64Array[],
   y: Float64Array,
-  C: number = 1.0,
+  C = 1.0,
   kernel: SVMKernelConfig = { type: "rbf", gamma: 0.1, degree: 3, coef0: 0 },
-  maxIter: number = 200,
-  tol: number = 1e-3,
+  maxIter = 200,
+  tol = 1e-3,
 ): SVMModel {
   const n = X.length;
   const alphas = new Float64Array(n);
@@ -116,10 +113,7 @@ export function fitSVM(
       }
       const ei = fi - yi;
 
-      if (
-        (yi * ei < -tol && (alphas[i] ?? 0) < C) ||
-        (yi * ei > tol && (alphas[i] ?? 0) > 0)
-      ) {
+      if ((yi * ei < -tol && (alphas[i] ?? 0) < C) || (yi * ei > tol && (alphas[i] ?? 0) > 0)) {
         // Heuristic: pick j != i with max |ei - ej|
         let j = (i + 1) % n;
         let maxDiff = 0;
@@ -136,13 +130,15 @@ export function fitSVM(
 
         const yj = y[j] ?? 0;
         let fj = -b;
-        for (let k2 = 0; k2 < n; k2++) fj += (alphas[k2] ?? 0) * (y[k2] ?? 0) * (K[k2 * n + j] ?? 0);
+        for (let k2 = 0; k2 < n; k2++)
+          fj += (alphas[k2] ?? 0) * (y[k2] ?? 0) * (K[k2 * n + j] ?? 0);
         const ej = fj - yj;
 
         const oldAlphaI = alphas[i] ?? 0;
         const oldAlphaJ = alphas[j] ?? 0;
 
-        let L: number, H: number;
+        let L: number;
+        let H: number;
         if (yi !== yj) {
           L = Math.max(0, oldAlphaJ - oldAlphaI);
           H = Math.min(C, C + oldAlphaJ - oldAlphaI);
@@ -156,7 +152,7 @@ export function fitSVM(
         const eta = 2 * (K[i * n + j] ?? 0) - (K[i * n + i] ?? 0) - (K[j * n + j] ?? 0);
         if (eta >= 0) continue;
 
-        let newAlphaJ = oldAlphaJ - yj * (ei - ej) / eta;
+        let newAlphaJ = oldAlphaJ - (yj * (ei - ej)) / eta;
         newAlphaJ = Math.min(H, Math.max(L, newAlphaJ));
 
         if (Math.abs(newAlphaJ - oldAlphaJ) < 1e-5) continue;
@@ -165,8 +161,16 @@ export function fitSVM(
         alphas[i] = newAlphaI;
         alphas[j] = newAlphaJ;
 
-        const b1 = b + ei + yi * (newAlphaI - oldAlphaI) * (K[i * n + i] ?? 0) + yj * (newAlphaJ - oldAlphaJ) * (K[i * n + j] ?? 0);
-        const b2 = b + ej + yi * (newAlphaI - oldAlphaI) * (K[i * n + j] ?? 0) + yj * (newAlphaJ - oldAlphaJ) * (K[j * n + j] ?? 0);
+        const b1 =
+          b +
+          ei +
+          yi * (newAlphaI - oldAlphaI) * (K[i * n + i] ?? 0) +
+          yj * (newAlphaJ - oldAlphaJ) * (K[i * n + j] ?? 0);
+        const b2 =
+          b +
+          ej +
+          yi * (newAlphaI - oldAlphaI) * (K[i * n + j] ?? 0) +
+          yj * (newAlphaJ - oldAlphaJ) * (K[j * n + j] ?? 0);
 
         if (newAlphaI > 0 && newAlphaI < C) {
           b = b1;

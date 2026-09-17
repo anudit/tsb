@@ -20,7 +20,7 @@ export function rbfKernel(
     const d = (x1[i] ?? 0) - (x2[i] ?? 0);
     sqDist += d * d;
   }
-  return amplitude * amplitude * Math.exp(-0.5 * sqDist / (lengthScale * lengthScale));
+  return amplitude * amplitude * Math.exp((-0.5 * sqDist) / (lengthScale * lengthScale));
 }
 
 /** Matern 5/2 kernel. */
@@ -55,7 +55,7 @@ export function kernelMatrix(
       K[i * n + j] = k;
       K[j * n + i] = k;
     }
-    K[i * n + i] += noise;
+    K[i * n + i] = (K[i * n + i] ?? 0) + noise;
   }
   return K;
 }
@@ -138,7 +138,9 @@ export function gpPredict(
 /** Standard normal CDF (approximation). */
 export function normalCDF(z: number): number {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  const poly =
+    t *
+    (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
   const phi = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-0.5 * z * z) * poly;
   return z >= 0 ? phi : 1 - phi;
 }
@@ -153,7 +155,7 @@ export function expectedImprovement(
   mean: number,
   variance: number,
   bestY: number,
-  xi: number = 0.01,
+  xi = 0.01,
 ): number {
   const std = Math.sqrt(variance);
   const z = (mean - bestY - xi) / (std || 1e-8);
@@ -165,14 +167,14 @@ export function probabilityOfImprovement(
   mean: number,
   variance: number,
   bestY: number,
-  xi: number = 0.01,
+  xi = 0.01,
 ): number {
   const std = Math.sqrt(variance);
   return normalCDF((mean - bestY - xi) / (std || 1e-8));
 }
 
 /** Upper Confidence Bound acquisition function. */
-export function upperConfidenceBound(mean: number, variance: number, kappa: number = 2.0): number {
+export function upperConfidenceBound(mean: number, variance: number, kappa = 2.0): number {
   return mean + kappa * Math.sqrt(variance);
 }
 
@@ -191,18 +193,18 @@ export interface BOState {
 export function initBOState(
   X: Float64Array[],
   y: Float64Array,
-  lengthScale: number = 1.0,
-  amplitude: number = 1.0,
-  noise: number = 0.01,
+  lengthScale = 1.0,
+  amplitude = 1.0,
+  noise = 0.01,
 ): BOState {
   let bestIdx = 0;
   for (let i = 1; i < y.length; i++) {
-    if ((y[i] ?? -Infinity) > (y[bestIdx] ?? -Infinity)) bestIdx = i;
+    if ((y[i] ?? Number.NEGATIVE_INFINITY) > (y[bestIdx] ?? Number.NEGATIVE_INFINITY)) bestIdx = i;
   }
   return {
     observedX: X,
     observedY: y,
-    bestY: y[bestIdx] ?? -Infinity,
+    bestY: y[bestIdx] ?? Number.NEGATIVE_INFINITY,
     bestX: X[bestIdx] ?? new Float64Array(0),
     lengthScale,
     amplitude,
@@ -215,8 +217,8 @@ export function suggestNext(
   state: BOState,
   candidates: Float64Array[],
   acquisition: "EI" | "PI" | "UCB" = "EI",
-  kappa: number = 2.0,
-  xi: number = 0.01,
+  kappa = 2.0,
+  xi = 0.01,
 ): { bestCandidate: Float64Array; acquisitionValues: Float64Array } {
   const K = kernelMatrix(state.observedX, state.lengthScale, state.amplitude, state.noise);
   const L = cholesky(K, state.observedX.length);
@@ -243,7 +245,13 @@ export function suggestNext(
 
   let bestIdx = 0;
   for (let i = 1; i < acqValues.length; i++) {
-    if ((acqValues[i] ?? -Infinity) > (acqValues[bestIdx] ?? -Infinity)) bestIdx = i;
+    if (
+      (acqValues[i] ?? Number.NEGATIVE_INFINITY) > (acqValues[bestIdx] ?? Number.NEGATIVE_INFINITY)
+    )
+      bestIdx = i;
   }
-  return { bestCandidate: candidates[bestIdx] ?? new Float64Array(0), acquisitionValues: acqValues };
+  return {
+    bestCandidate: candidates[bestIdx] ?? new Float64Array(0),
+    acquisitionValues: acqValues,
+  };
 }

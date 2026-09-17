@@ -2,7 +2,7 @@
  * Tests for src/ml/random_forest.ts
  */
 import { describe, expect, it } from "bun:test";
-import { fitRandomForest, predictRandomForest, LCGRandom, r2Score } from "../../src/index.ts";
+import { LCGRandom, fitRandomForest, predictRandomForest, r2Score } from "../../src/index.ts";
 
 describe("LCGRandom", () => {
   it("returns values in [0, 1)", () => {
@@ -26,10 +26,11 @@ describe("LCGRandom", () => {
 
 describe("fitRandomForest — regression", () => {
   const n = 30;
-  const X: Float64Array[] = Array.from({ length: n }, (_, i) =>
-    new Float64Array([i / 10, (i % 5) / 5])
+  const X: Float64Array[] = Array.from(
+    { length: n },
+    (_, i) => new Float64Array([i / 10, (i % 5) / 5]),
   );
-  const y = Float64Array.from({ length: n }, (_, i) => (i / 10) * 2 + ((i % 5) / 5));
+  const y = Float64Array.from({ length: n }, (_, i) => (i / 10) * 2 + (i % 5) / 5);
 
   it("trains and predicts without error", () => {
     const model = fitRandomForest(X, y, { nEstimators: 20, maxDepth: 3, seed: 1 });

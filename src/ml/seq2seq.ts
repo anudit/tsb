@@ -105,8 +105,9 @@ export function bahdanauAttention(
   }
 
   // Softmax
-  let maxScore = -Infinity;
-  for (let t = 0; t < seqLen; t++) maxScore = Math.max(maxScore, scores[t] ?? -Infinity);
+  let maxScore = Number.NEGATIVE_INFINITY;
+  for (let t = 0; t < seqLen; t++)
+    maxScore = Math.max(maxScore, scores[t] ?? Number.NEGATIVE_INFINITY);
   let sumExp = 0;
   const alphas = new Float64Array(seqLen);
   for (let t = 0; t < seqLen; t++) {
@@ -120,7 +121,7 @@ export function bahdanauAttention(
   for (let t = 0; t < seqLen; t++) {
     const enc = encoderStates[t]!;
     for (let j = 0; j < hiddenSize; j++) {
-      context[j] += (alphas[t] ?? 0) * (enc[j] ?? 0);
+      context[j] = (context[j] ?? 0) + (alphas[t] ?? 0) * (enc[j] ?? 0);
     }
   }
   return { context, alphas };
@@ -187,10 +188,10 @@ export function greedyDecode(
     const { hidden: newH, logits } = decoderStep(currentEmb, hidden, encoderStates, weights);
     hidden = newH;
     let bestIdx = 0;
-    let bestScore = -Infinity;
+    let bestScore = Number.NEGATIVE_INFINITY;
     for (let v = 0; v < logits.length; v++) {
-      if ((logits[v] ?? -Infinity) > bestScore) {
-        bestScore = logits[v] ?? -Infinity;
+      if ((logits[v] ?? Number.NEGATIVE_INFINITY) > bestScore) {
+        bestScore = logits[v] ?? Number.NEGATIVE_INFINITY;
         bestIdx = v;
       }
     }

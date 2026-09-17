@@ -39,7 +39,7 @@ export function scaledDotProductAttention(
   // Softmax over rows
   const weights = new Float64Array(seqLen * seqLen);
   for (let i = 0; i < seqLen; i++) {
-    let maxScore = -Infinity;
+    let maxScore = Number.NEGATIVE_INFINITY;
     for (let j = 0; j < seqLen; j++) maxScore = Math.max(maxScore, scores[i * seqLen + j] ?? 0);
     let sumExp = 0;
     for (let j = 0; j < seqLen; j++) {
@@ -70,7 +70,7 @@ export function layerNorm(
   x: Float64Array,
   gamma: Float64Array,
   beta: Float64Array,
-  eps: number = 1e-5,
+  eps = 1e-5,
 ): Float64Array {
   let mean = 0;
   for (let i = 0; i < x.length; i++) mean += x[i] ?? 0;
@@ -84,7 +84,7 @@ export function layerNorm(
   const std = Math.sqrt(variance + eps);
   const out = new Float64Array(x.length);
   for (let i = 0; i < x.length; i++) {
-    out[i] = ((x[i] ?? 0) - mean) / std * (gamma[i] ?? 1) + (beta[i] ?? 0);
+    out[i] = (((x[i] ?? 0) - mean) / std) * (gamma[i] ?? 1) + (beta[i] ?? 0);
   }
   return out;
 }
@@ -192,7 +192,7 @@ export function linearHead(
 
 /** Softmax activation. */
 export function softmax(logits: Float64Array): Float64Array {
-  let maxVal = -Infinity;
+  let maxVal = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < logits.length; i++) maxVal = Math.max(maxVal, logits[i] ?? 0);
   let sumExp = 0;
   const out = new Float64Array(logits.length);

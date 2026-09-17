@@ -42,7 +42,9 @@ export function viterbiDecode(params: CRFParams): ViterbiResult {
   const v0 = new Float64Array(numTags);
   const bp0 = new Int32Array(numTags).fill(-1);
   for (let j = 0; j < numTags; j++) {
-    v0[j] = (startScores[j] ?? -Infinity) + (emissionScores[j] ?? -Infinity);
+    v0[j] =
+      (startScores[j] ?? Number.NEGATIVE_INFINITY) +
+      (emissionScores[j] ?? Number.NEGATIVE_INFINITY);
   }
   viterbi.push(v0);
   backpointer.push(bp0);
@@ -52,16 +54,18 @@ export function viterbiDecode(params: CRFParams): ViterbiResult {
     const bpt = new Int32Array(numTags);
     const vprev = viterbi[t - 1]!;
     for (let j = 0; j < numTags; j++) {
-      let bestScore = -Infinity;
+      let bestScore = Number.NEGATIVE_INFINITY;
       let bestPrev = 0;
       for (let i = 0; i < numTags; i++) {
-        const score = (vprev[i] ?? -Infinity) + (transitionScores[i * numTags + j] ?? -Infinity);
+        const score =
+          (vprev[i] ?? Number.NEGATIVE_INFINITY) +
+          (transitionScores[i * numTags + j] ?? Number.NEGATIVE_INFINITY);
         if (score > bestScore) {
           bestScore = score;
           bestPrev = i;
         }
       }
-      vt[j] = bestScore + (emissionScores[t * numTags + j] ?? -Infinity);
+      vt[j] = bestScore + (emissionScores[t * numTags + j] ?? Number.NEGATIVE_INFINITY);
       bpt[j] = bestPrev;
     }
     viterbi.push(vt);
@@ -70,10 +74,10 @@ export function viterbiDecode(params: CRFParams): ViterbiResult {
 
   // Add end scores
   const vlast = viterbi[seqLen - 1]!;
-  let bestFinalScore = -Infinity;
+  let bestFinalScore = Number.NEGATIVE_INFINITY;
   let bestFinalTag = 0;
   for (let j = 0; j < numTags; j++) {
-    const s = (vlast[j] ?? -Infinity) + (endScores[j] ?? 0);
+    const s = (vlast[j] ?? Number.NEGATIVE_INFINITY) + (endScores[j] ?? 0);
     if (s > bestFinalScore) {
       bestFinalScore = s;
       bestFinalTag = j;
@@ -97,7 +101,9 @@ export function forwardLogZ(params: CRFParams): number {
   // alpha[tag] = log sum of scores for all paths ending at (t, tag)
   let alpha = new Float64Array(numTags);
   for (let j = 0; j < numTags; j++) {
-    alpha[j] = (startScores[j] ?? -Infinity) + (emissionScores[j] ?? -Infinity);
+    alpha[j] =
+      (startScores[j] ?? Number.NEGATIVE_INFINITY) +
+      (emissionScores[j] ?? Number.NEGATIVE_INFINITY);
   }
 
   for (let t = 1; t < seqLen; t++) {
@@ -105,9 +111,12 @@ export function forwardLogZ(params: CRFParams): number {
     for (let j = 0; j < numTags; j++) {
       const scores = new Float64Array(numTags);
       for (let i = 0; i < numTags; i++) {
-        scores[i] = (alpha[i] ?? -Infinity) + (transitionScores[i * numTags + j] ?? -Infinity);
+        scores[i] =
+          (alpha[i] ?? Number.NEGATIVE_INFINITY) +
+          (transitionScores[i * numTags + j] ?? Number.NEGATIVE_INFINITY);
       }
-      newAlpha[j] = logSumExp(scores) + (emissionScores[t * numTags + j] ?? -Infinity);
+      newAlpha[j] =
+        logSumExp(scores) + (emissionScores[t * numTags + j] ?? Number.NEGATIVE_INFINITY);
     }
     alpha = newAlpha;
   }
@@ -115,7 +124,7 @@ export function forwardLogZ(params: CRFParams): number {
   // Add end scores
   const final = new Float64Array(numTags);
   for (let j = 0; j < numTags; j++) {
-    final[j] = (alpha[j] ?? -Infinity) + (endScores[j] ?? 0);
+    final[j] = (alpha[j] ?? Number.NEGATIVE_INFINITY) + (endScores[j] ?? 0);
   }
   return logSumExp(final);
 }
@@ -123,13 +132,13 @@ export function forwardLogZ(params: CRFParams): number {
 /** Compute score of a given tag sequence. */
 export function sequenceScore(params: CRFParams, tags: number[]): number {
   const { numTags, emissionScores, transitionScores, startScores, endScores } = params;
-  let score = startScores[tags[0] ?? 0] ?? -Infinity;
-  score += emissionScores[(tags[0] ?? 0)] ?? -Infinity;
+  let score = startScores[tags[0] ?? 0] ?? Number.NEGATIVE_INFINITY;
+  score += emissionScores[tags[0] ?? 0] ?? Number.NEGATIVE_INFINITY;
   for (let t = 1; t < tags.length; t++) {
     const prev = tags[t - 1] ?? 0;
     const curr = tags[t] ?? 0;
-    score += transitionScores[prev * numTags + curr] ?? -Infinity;
-    score += emissionScores[t * numTags + curr] ?? -Infinity;
+    score += transitionScores[prev * numTags + curr] ?? Number.NEGATIVE_INFINITY;
+    score += emissionScores[t * numTags + curr] ?? Number.NEGATIVE_INFINITY;
   }
   score += endScores[tags[tags.length - 1] ?? 0] ?? 0;
   return score;
@@ -144,12 +153,13 @@ export function crfNegLogLikelihood(params: CRFParams, tags: number[]): number {
 
 /** Log-sum-exp (numerically stable). */
 export function logSumExp(values: Float64Array): number {
-  let max = -Infinity;
-  for (let i = 0; i < values.length; i++) max = Math.max(max, values[i] ?? -Infinity);
-  if (!isFinite(max)) return -Infinity;
+  let max = Number.NEGATIVE_INFINITY;
+  for (let i = 0; i < values.length; i++)
+    max = Math.max(max, values[i] ?? Number.NEGATIVE_INFINITY);
+  if (!Number.isFinite(max)) return Number.NEGATIVE_INFINITY;
   let sum = 0;
   for (let i = 0; i < values.length; i++) {
-    sum += Math.exp((values[i] ?? -Infinity) - max);
+    sum += Math.exp((values[i] ?? Number.NEGATIVE_INFINITY) - max);
   }
   return max + Math.log(sum);
 }
