@@ -109,10 +109,7 @@ export function firwin(
   const nyq = fs / 2;
 
   // Normalise cutoff(s) to [0..1] where 1 = Nyquist
-  const rawCuts = Array.isArray(cutoff)
-    ? (cutoff as readonly [number, number])
-    : ([cutoff] as const);
-  const cuts = (rawCuts as readonly number[]).map((c) => c / nyq);
+  const cuts = (typeof cutoff === "number" ? [cutoff] : cutoff).map((c) => c / nyq);
 
   const M = numtaps - 1;
 
@@ -146,7 +143,8 @@ export function firwin(
     }
   } else {
     // Band-pass or band-stop
-    const [f1, f2] = cuts as [number, number];
+    const f1 = cuts[0] ?? 0;
+    const f2 = cuts[1] ?? 0;
     if (passZero) {
       // Band-stop (notch): LP(f1) + HP(f2)
       for (let n = 0; n < numtaps; n++) {
@@ -222,14 +220,15 @@ export function freqz(
   a: readonly number[] = [1],
   worN: number | readonly number[] = 512,
 ): FreqzResult {
-  const ws: number[] = Array.isArray(worN)
-    ? Array.from(worN as readonly number[])
-    : Array.from({ length: worN as number }, (_, i) => (Math.PI * i) / (worN as number));
+  const ws =
+    typeof worN === "number"
+      ? Array.from({ length: worN }, (_, i) => (Math.PI * i) / worN)
+      : Array.from(worN);
 
   const H: Complex[] = ws.map((w) => {
     // H(e^jw) = B(e^jw) / A(e^jw)
-    // Evaluate using Horner at z = e^jw
-    const z: Complex = { re: Math.cos(w), im: Math.sin(w) };
+    // Evaluate in z^-1 so numerator and denominator can have different lengths.
+    const z: Complex = { re: Math.cos(w), im: -Math.sin(w) };
     const Bw = evalPolyZ(b, z);
     const Aw = evalPolyZ(a, z);
     return divComplex(Bw, Aw);
@@ -238,10 +237,10 @@ export function freqz(
   return { w: ws, H };
 }
 
-/** Evaluate polynomial with coefficients `p` at complex `z` (b[0]*z^N + ... + b[N]). */
+/** Evaluate p[0] + p[1]*z + ... using Horner's method. */
 function evalPolyZ(p: readonly number[], z: Complex): Complex {
   let acc: Complex = complex(0, 0);
-  for (let i = 0; i < p.length; i++) {
+  for (let i = p.length - 1; i >= 0; i--) {
     // acc = acc * z + p[i]
     acc = {
       re: acc.re * z.re - acc.im * z.im + (p[i] ?? 0),
@@ -302,317 +301,164 @@ export type FilterType = "lowpass" | "highpass" | "bandpass" | "bandstop";
  * const y = sosfilt(sos, signal);
  * ```
  */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: filter design algebra
 export function butter(
   N: number,
   Wn: number | readonly [number, number],
   type: FilterType = "lowpass",
 ): ButterResult {
-  // Validate
   if (N < 1 || N > 20 || !Number.isInteger(N)) {
     throw new RangeError("Order N must be an integer 1–20");
   }
 
-  const _nyq = 1; // Normalised: Nyquist = 1
   const isBand = type === "bandpass" || type === "bandstop";
-
-  if (isBand && !Array.isArray(Wn)) {
+  if (isBand && typeof Wn === "number") {
     throw new TypeError("Band filters require Wn = [low, high]");
   }
-  if (!isBand && Array.isArray(Wn)) {
+  if (!isBand && typeof Wn !== "number") {
     throw new TypeError("Low/high-pass filters require scalar Wn");
   }
+  const cuts = typeof Wn === "number" ? [Wn] : Wn;
+  if (cuts.some((cut) => !Number.isFinite(cut) || cut <= 0 || cut >= 1)) {
+    throw new RangeError("Critical frequencies must be finite and strictly between 0 and 1");
+  }
+  if (typeof Wn !== "number" && Wn[0] >= Wn[1]) {
+    throw new RangeError("Band critical frequencies must satisfy low < high");
+  }
 
-  // Pre-warp critical frequency(ies) using bilinear transform
-  const warpedWn: number | [number, number] = Array.isArray(Wn)
-    ? ([
-        2 * Math.tan((Math.PI * (Wn as readonly [number, number])[0]) / 2),
-        2 * Math.tan((Math.PI * (Wn as readonly [number, number])[1]) / 2),
-      ] as [number, number])
-    : 2 * Math.tan((Math.PI * (Wn as number)) / 2);
-
-  // Analog Butterworth prototype poles at unit circle (left half-plane)
-  // p_k = exp(j * pi * (2k + N - 1) / (2N)) for k = 0..N-1
-  const poles: Complex[] = Array.from({ length: N }, (_, k) => {
-    const ang = (Math.PI * (2 * k + N - 1)) / (2 * N);
-    return complex(Math.cos(ang), Math.sin(ang));
+  // Unit-cutoff Butterworth poles in the left half-plane.
+  const poles = Array.from({ length: N }, (_, k) => {
+    const angle = (Math.PI * (2 * k + N + 1)) / (2 * N);
+    return complex(Math.cos(angle), Math.sin(angle));
   });
-
-  // Scale poles to the desired cutoff frequency
-  let scaledPoles: Complex[];
-  let scaledZeros: Complex[];
-  let scaledGain: number;
-
-  if (type === "lowpass") {
-    const omega = warpedWn as number;
-    scaledPoles = poles.map((p) => ({ re: p.re * omega, im: p.im * omega }));
-    scaledZeros = []; // all zeros at s = ∞
-    scaledGain = omega ** N;
-  } else if (type === "highpass") {
-    const omega = warpedWn as number;
-    // LP → HP: s → omega / s  ⟹  pole at s=p_k maps to omega/p_k
-    scaledPoles = poles.map((p) => {
-      const mag2 = p.re * p.re + p.im * p.im;
-      return { re: (omega * p.re) / mag2, im: -(omega * p.im) / mag2 };
-    });
-    scaledZeros = Array.from({ length: N }, () => complex(0, 0)); // N zeros at s=0
-    scaledGain = 1;
-  } else {
-    // Bandpass / bandstop: use direct bilinear transform below
-    scaledPoles = poles;
-    scaledZeros = [];
-    scaledGain = 1;
+  if (typeof Wn !== "number") {
+    const warped: [number, number] = [
+      2 * Math.tan((Math.PI * Wn[0]) / 2),
+      2 * Math.tan((Math.PI * Wn[1]) / 2),
+    ];
+    return butterBand(warped, type === "bandstop" ? "bandstop" : "bandpass", poles);
   }
 
-  // Convert analog poles/zeros to digital via bilinear transform: z = (2+s)/(2-s)
-  // For band filters, handle separately
-  if (type === "bandpass" || type === "bandstop") {
-    return butterBand(N, warpedWn as [number, number], type, poles);
-  }
-
-  const digPoles: Complex[] = scaledPoles.map(bilinearPole);
-  const digZeros: Complex[] = scaledZeros.map(bilinearPole);
-  // LP numerator: N zeros at z=-1 after bilinear (from s=∞ mapping)
-  const lpZerosAtMinusOne = type === "lowpass" ? N : 0;
-
-  // Build SOS sections
-  const sos = buildSOS(digPoles, digZeros, lpZerosAtMinusOne, scaledGain, type);
-  const { b, a } = sosToBA(sos);
-
-  return { sos, b, a };
+  const omega = 2 * Math.tan((Math.PI * Wn) / 2);
+  const digitalPoles = poles.map((pole) => {
+    const scaled =
+      type === "highpass"
+        ? divComplex(complex(omega, 0), pole)
+        : complex(omega * pole.re, omega * pole.im);
+    return bilinearPole(scaled);
+  });
+  const sections = pairPoles(digitalPoles).map(([p, q]): SOSSection => {
+    const zero = type === "highpass" ? 1 : -1;
+    return [
+      1,
+      q === null ? -zero : -2 * zero,
+      q === null ? 0 : 1,
+      1,
+      -(p.re + (q?.re ?? 0)),
+      q === null ? 0 : p.re * q.re - p.im * q.im,
+    ];
+  });
+  const sos = normaliseSOS(sections, type === "highpass" ? Math.PI : 0);
+  return { sos, ...sosToBA(sos) };
 }
 
 /** Bilinear transform: analog pole s → digital pole z = (2+s)/(2-s). */
 function bilinearPole(s: Complex): Complex {
-  // z = (2+s)/(2-s)
-  const num: Complex = { re: 2 + s.re, im: s.im };
-  const den: Complex = { re: 2 - s.re, im: -s.im };
-  const denom = den.re * den.re + den.im * den.im;
-  return {
-    re: (num.re * den.re + num.im * den.im) / denom,
-    im: (num.im * den.re - num.re * den.im) / denom,
-  };
+  return divComplex(complex(2 + s.re, s.im), complex(2 - s.re, -s.im));
 }
 
-/** Build second-order sections from digital poles, zeros, and gain. */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: SOS construction
-function buildSOS(
-  poles: Complex[],
-  explicitZeros: Complex[],
-  nZerosAtMinusOne: number,
-  gain: number,
-  type: FilterType,
-): SOSSection[] {
-  const N = poles.length;
-  const sections: SOSSection[] = [];
-
-  // Pair up conjugate poles (sort by imaginary part descending to pair conjugates)
-  const sortedPoles = [...poles].sort((a, b) => Math.abs(b.im) - Math.abs(a.im));
-  const usedPoles = new Array<boolean>(N).fill(false);
-  const pairedPoles: [Complex, Complex | null][] = [];
-
-  for (let i = 0; i < N; i++) {
-    if (usedPoles[i]) {
-      continue;
+/** Pair conjugate poles, and pair real poles with each other where possible. */
+function pairPoles(poles: readonly Complex[]): [Complex, Complex | null][] {
+  const remaining = [...poles].sort((a, b) => cAbs(a) - cAbs(b));
+  const pairs: [Complex, Complex | null][] = [];
+  while (remaining.length > 0) {
+    const pole = remaining.shift();
+    if (pole === undefined) break;
+    const real = Math.abs(pole.im) < 1e-10;
+    const partner = remaining.findIndex((candidate) =>
+      real
+        ? Math.abs(candidate.im) < 1e-10
+        : Math.abs(pole.re - candidate.re) < 1e-10 && Math.abs(pole.im + candidate.im) < 1e-10,
+    );
+    if (partner < 0 && !real) {
+      throw new Error("Could not pair Butterworth conjugate poles");
     }
-    const p = sortedPoles[i]!;
-    if (Math.abs(p.im) < 1e-10) {
-      // Real pole — stand alone
-      usedPoles[i] = true;
-      pairedPoles.push([p, null]);
-    } else {
-      // Find conjugate
-      let found = false;
-      for (let j = i + 1; j < N; j++) {
-        if (!usedPoles[j]) {
-          const q = sortedPoles[j]!;
-          if (Math.abs(p.re - q.re) < 1e-10 && Math.abs(p.im + q.im) < 1e-10) {
-            usedPoles[i] = usedPoles[j] = true;
-            pairedPoles.push([p, q]);
-            found = true;
-            break;
-          }
-        }
-      }
-      if (!found) {
-        usedPoles[i] = true;
-        pairedPoles.push([p, null]);
-      }
-    }
+    pairs.push([pole, partner < 0 ? null : (remaining.splice(partner, 1)[0] ?? null)]);
   }
-
-  // Build sections: pair poles with zeros
-  let zerosRemaining = nZerosAtMinusOne;
-  let expZerosIdx = 0;
-  const nSections = pairedPoles.length;
-  const gainPerSection = gain > 0 ? gain ** (1 / nSections) : 1;
-
-  for (const [p1, p2] of pairedPoles) {
-    let b0: number;
-    let b1: number;
-    let b2: number;
-    let a1: number;
-    let a2: number;
-
-    if (p2 !== null) {
-      // Conjugate pair: (z - p1)(z - p2) = z^2 - 2*Re(p1)*z + |p1|^2
-      a1 = -2 * p1.re;
-      a2 = p1.re * p1.re + p1.im * p1.im;
-      if (type === "lowpass" && zerosRemaining >= 2) {
-        // Two zeros at z = -1: (z+1)^2 = z^2 + 2z + 1
-        b0 = 1;
-        b1 = 2;
-        b2 = 1;
-        zerosRemaining -= 2;
-      } else if (type === "highpass" && expZerosIdx < explicitZeros.length - 1) {
-        // Two zeros at z = 0: z^2 = z^2 + 0*z + 0
-        b0 = 1;
-        b1 = 0;
-        b2 = 0;
-        expZerosIdx += 2;
-      } else {
-        b0 = 1;
-        b1 = 0;
-        b2 = 0;
-      }
-    } else {
-      // Single real pole: (z - p1) = z - p1.re
-      a1 = -p1.re;
-      a2 = 0;
-      if (type === "lowpass" && zerosRemaining >= 1) {
-        // One zero at z = -1: z + 1
-        b0 = 1;
-        b1 = 1;
-        b2 = 0;
-        zerosRemaining -= 1;
-      } else if (type === "highpass" && expZerosIdx < explicitZeros.length) {
-        // One zero at z = 0: z
-        b0 = 1;
-        b1 = 0;
-        b2 = 0;
-        expZerosIdx += 1;
-      } else {
-        b0 = 1;
-        b1 = 0;
-        b2 = 0;
-      }
-    }
-
-    // Normalise section gain
-    const secGain = gainPerSection;
-    sections.push([b0 * secGain, b1 * secGain, b2 * secGain, 1, a1, a2]);
-  }
-
-  // Normalise so H(z=1) = 1 for lowpass, H(z=-1) = 1 for highpass
-  return normaliseSOS(sections, type);
+  return pairs;
 }
 
-/** Normalise SOS sections so the passband gain equals 1. */
-function normaliseSOS(sections: SOSSection[], type: FilterType): SOSSection[] {
-  // Evaluate H(z) at passband frequency: z=1 for LP, z=-1 for HP
-  const z = type === "highpass" ? -1 : 1;
-  const totalGain = sections.reduce((prod, sec) => {
-    const [b0, b1, b2, , a1, a2] = sec;
-    const num = b0 * z ** 2 + b1 * z + b2;
-    const den = z ** 2 + a1 * z + a2;
-    return prod * (Math.abs(den) > 1e-10 ? num / den : 1);
-  }, 1);
-
-  if (Math.abs(totalGain) < 1e-12) {
-    return sections;
-  }
-  const scale = 1 / totalGain;
-
-  // Apply scale to first section numerator only
-  const result: SOSSection[] = [...sections];
-  if (result.length > 0) {
-    const [b0, b1, b2, one, a1, a2] = result[0]!;
-    result[0] = [b0 * scale, b1 * scale, b2 * scale, one, a1, a2];
-  }
-  return result;
+/** Normalize each section at a frequency in the unit-gain passband. */
+function normaliseSOS(sections: readonly SOSSection[], frequency: number): SOSSection[] {
+  const z = complex(Math.cos(frequency), -Math.sin(frequency));
+  return sections.map(([b0, b1, b2, a0, a1, a2]): SOSSection => {
+    const numerator = cAbs(evalPolyZ([b0, b1, b2], z));
+    const denominator = cAbs(evalPolyZ([a0, a1, a2], z));
+    const scale = denominator / numerator;
+    return [b0 * scale, b1 * scale, b2 * scale, a0, a1, a2];
+  });
 }
 
-/** Handle band-pass and band-stop Butterworth filters. */
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: band filter design
+/** Apply the low-pass prototype's band transformation before the bilinear map. */
 function butterBand(
-  _N: number,
-  warped: [number, number],
+  warped: readonly [number, number],
   type: "bandpass" | "bandstop",
-  protoPoles: Complex[],
+  protoPoles: readonly Complex[],
 ): ButterResult {
   const [w1, w2] = warped;
-  const bw = w2 - w1;
-  const w0 = Math.sqrt(w1 * w2); // geometric centre frequency
-
-  const sos: SOSSection[] = [];
-
-  // For each prototype pole, apply LP→BP or LP→BS transform
-  // LP→BP: s → (s^2 + w0^2) / (bw * s)
-  // Each LP pole becomes two BP poles
-  for (const p of protoPoles) {
-    // LP pole p_k:  s → (s^2 + w0^2) / (bw * s) = p_k
-    //   bw * s * p_k = s^2 + w0^2
-    //   s^2 - bw * p_k * s + w0^2 = 0
-    // Solutions: s = (bw * p_k ± sqrt((bw * p_k)^2 - 4 * w0^2)) / 2
-    const a = bw * p.re;
-    const b = bw * p.im;
-    // discriminant = (bw*p)^2 - 4*w0^2 = (a+jb)^2 - 4*w0^2
-    const discRe = a * a - b * b - 4 * w0 * w0;
-    const discIm = 2 * a * b;
-    // sqrt of (discRe + j*discIm)
-    const [sqrtRe, sqrtIm] = complexSqrt(discRe, discIm);
-    const s1: Complex = { re: (a + sqrtRe) / 2, im: (b + sqrtIm) / 2 };
-    const s2: Complex = { re: (a - sqrtRe) / 2, im: (b - sqrtIm) / 2 };
-
-    let z1: Complex;
-    let z2: Complex;
-    if (type === "bandpass") {
-      z1 = bilinearPole(s1);
-      z2 = bilinearPole(s2);
-    } else {
-      // BP→BS transform: s → bw*w0 / (s^2 + w0^2)... simplify using direct analog BS poles
-      // LP→BS: s → bw*s / (s^2 + w0^2)
-      // Similar computation
-      z1 = bilinearPole(s1);
-      z2 = bilinearPole(s2);
-    }
-
-    // Each pair of complex poles contributes a 2nd-order section
-    const a1 = -(z1.re + z2.re);
-    const a2 = z1.re * z2.re - z1.im * z2.im; // assume z1, z2 are conjugates
-
-    const [b0, b1, b2] =
+  const bandwidth = w2 - w1;
+  const center = Math.sqrt(w1 * w2);
+  const digitalPoles: Complex[] = [];
+  for (const pole of protoPoles) {
+    // BP: s² - BW*p*s + center² = 0.
+    // BS: s² - (BW/p)*s + center² = 0.
+    const linear =
       type === "bandpass"
-        ? [1, 0, -1] // bandpass: zeros at z=+1 and z=-1
-        : [
-            1,
-            -2 * Math.cos(Math.acos(Math.max(-1, Math.min(1, (w0 * w0 + 1) / (w0 * w0 + 1))))),
-            1,
-          ]; // bandstop: zeros at e^±jw0
-
-    sos.push([b0, b1, b2, 1, a1, a2]);
+        ? complex(bandwidth * pole.re, bandwidth * pole.im)
+        : divComplex(complex(bandwidth, 0), pole);
+    const [rootRe, rootIm] = complexSqrt(
+      linear.re ** 2 - linear.im ** 2 - 4 * center ** 2,
+      2 * linear.re * linear.im,
+    );
+    digitalPoles.push(
+      bilinearPole(complex((linear.re + rootRe) / 2, (linear.im + rootIm) / 2)),
+      bilinearPole(complex((linear.re - rootRe) / 2, (linear.im - rootIm) / 2)),
+    );
   }
 
-  const normalised = normaliseSOS(sos, type);
-  const { b, a } = sosToBA(normalised);
-  return { sos: normalised, b, a };
+  // BP zeros map to z=±1. BS zeros at ±j*center map to a unit-circle pair.
+  const stopZero = bilinearPole(complex(0, center));
+  const sections = pairPoles(digitalPoles).map(([p, q]): SOSSection => {
+    if (q === null) throw new Error("Band filters require paired poles");
+    return [
+      1,
+      type === "bandpass" ? 0 : -2 * stopZero.re,
+      type === "bandpass" ? -1 : 1,
+      1,
+      -(p.re + q.re),
+      p.re * q.re - p.im * q.im,
+    ];
+  });
+  const frequency = type === "bandpass" ? 2 * Math.atan(center / 2) : 0;
+  const sos = normaliseSOS(sections, frequency);
+  return { sos, ...sosToBA(sos) };
 }
 
-/** Real and imaginary parts of sqrt(re + j*im). */
+/** Real and imaginary parts of the principal square root, including negative real inputs. */
 function complexSqrt(re: number, im: number): [number, number] {
-  const r = Math.sqrt(re * re + im * im);
-  const sr = Math.sqrt((r + re) / 2);
-  const si = Math.sign(im) * Math.sqrt((r - re) / 2);
-  return [sr, si];
+  const magnitude = Math.hypot(re, im);
+  const rootRe = Math.sqrt(Math.max(0, (magnitude + re) / 2));
+  const rootIm = Math.sqrt(Math.max(0, (magnitude - re) / 2));
+  return [rootRe, im < 0 ? -rootIm : rootIm];
 }
 
-/** Convert SOS to b/a transfer function via polynomial multiplication. */
+/** Convert SOS to b/a transfer function, omitting first-order padding. */
 function sosToBA(sections: readonly SOSSection[]): { b: number[]; a: number[] } {
   let b: number[] = [1];
   let a: number[] = [1];
-  for (const [b0, b1, b2, , a1, a2] of sections) {
-    b = polyMul(b, [b0, b1, b2]);
-    a = polyMul(a, [1, a1, a2]);
+  for (const [b0, b1, b2, a0, a1, a2] of sections) {
+    const firstOrder = b2 === 0 && a2 === 0;
+    b = polyMul(b, firstOrder ? [b0, b1] : [b0, b1, b2]);
+    a = polyMul(a, firstOrder ? [a0, a1] : [a0, a1, a2]);
   }
   return { b, a };
 }
@@ -628,16 +474,17 @@ export function sosfreqz(
   sos: readonly SOSSection[],
   worN: number | readonly number[] = 512,
 ): FreqzResult {
-  const ws: number[] = Array.isArray(worN)
-    ? Array.from(worN as readonly number[])
-    : Array.from({ length: worN as number }, (_, i) => (Math.PI * i) / (worN as number));
+  const ws =
+    typeof worN === "number"
+      ? Array.from({ length: worN }, (_, i) => (Math.PI * i) / worN)
+      : Array.from(worN);
 
   const H: Complex[] = ws.map((w) => {
-    const z: Complex = { re: Math.cos(w), im: Math.sin(w) };
+    const z: Complex = { re: Math.cos(w), im: -Math.sin(w) };
     let acc: Complex = complex(1, 0);
-    for (const [b0, b1, b2, , a1, a2] of sos) {
+    for (const [b0, b1, b2, a0, a1, a2] of sos) {
       const num = evalPolyZ([b0, b1, b2], z);
-      const den = evalPolyZ([1, a1, a2], z);
+      const den = evalPolyZ([a0, a1, a2], z);
       const secH = divComplex(num, den);
       acc = { re: acc.re * secH.re - acc.im * secH.im, im: acc.re * secH.im + acc.im * secH.re };
     }
@@ -714,10 +561,47 @@ export function filtfilt(
   a: readonly number[],
   x: readonly number[],
 ): number[] {
-  const forward = lfilter(b, a, x);
-  const reversed = [...forward].reverse();
-  const backward = lfilter(b, a, reversed);
-  return backward.reverse();
+  if (x.length === 0) return [];
+  const edge = Math.min(3 * Math.max(a.length, b.length), x.length - 1);
+  const extended = oddExtension(x, edge);
+  const forward = filterSteadyState(b, a, extended);
+  const backward = filterSteadyState(b, a, forward.reverse());
+  return backward.reverse().slice(edge, edge + x.length);
+}
+
+/** Reflect endpoint deviations to avoid introducing artificial jumps. */
+function oddExtension(x: readonly number[], edge: number): number[] {
+  const first = x[0] ?? 0;
+  const last = x[x.length - 1] ?? 0;
+  const left = Array.from({ length: edge }, (_, i) => 2 * first - (x[edge - i] ?? first));
+  const right = Array.from({ length: edge }, (_, i) => 2 * last - (x[x.length - 2 - i] ?? last));
+  return [...left, ...x, ...right];
+}
+
+/** Direct-form II filtering initialized to the first sample's steady state. */
+function filterSteadyState(
+  b: readonly number[],
+  a: readonly number[],
+  x: readonly number[],
+): number[] {
+  const a0 = a[0] ?? 1;
+  const bn = b.map((v) => v / a0);
+  const an = a.map((v) => v / a0);
+  const order = Math.max(a.length, b.length) - 1;
+  const state = new Array<number>(order + 1).fill(0);
+  const first = x[0] ?? 0;
+  const denominator = an.reduce((sum, v) => sum + v, 0);
+  const steady = denominator === 0 ? 0 : (first * bn.reduce((sum, v) => sum + v, 0)) / denominator;
+  for (let i = order - 1; i >= 0; i--) {
+    state[i] = (state[i + 1] ?? 0) + (bn[i + 1] ?? 0) * first - (an[i + 1] ?? 0) * steady;
+  }
+  return x.map((value) => {
+    const out = (bn[0] ?? 0) * value + (state[0] ?? 0);
+    for (let i = 0; i < order; i++) {
+      state[i] = (state[i + 1] ?? 0) + (bn[i + 1] ?? 0) * value - (an[i + 1] ?? 0) * out;
+    }
+    return out;
+  });
 }
 
 /**
@@ -732,25 +616,33 @@ export function filtfilt(
  */
 export function sosfilt(sos: readonly SOSSection[], x: readonly number[]): number[] {
   let signal = Array.from(x);
-  for (const [b0, b1, b2, , a1, a2] of sos) {
-    signal = lfilter([b0, b1, b2], [1, a1, a2], signal);
+  for (const [b0, b1, b2, a0, a1, a2] of sos) {
+    signal = lfilter([b0, b1, b2], [a0, a1, a2], signal);
   }
   return signal;
 }
 
 /**
- * Zero-phase SOS filter (applies each section forward then backward).
+ * Zero-phase SOS filter with one padded forward cascade and one backward cascade.
  *
  * @param sos - SOS sections from {@link butter}.
  * @param x   - Input signal.
  * @returns   - Zero-phase filtered signal.
  */
 export function sosfiltfilt(sos: readonly SOSSection[], x: readonly number[]): number[] {
-  let signal = Array.from(x);
-  for (const [b0, b1, b2, , a1, a2] of sos) {
-    signal = filtfilt([b0, b1, b2], [1, a1, a2], signal);
+  if (x.length === 0) return [];
+  const numeratorPadding = sos.filter((section) => section[2] === 0).length;
+  const denominatorPadding = sos.filter((section) => section[5] === 0).length;
+  const taps = 2 * sos.length + 1 - Math.min(numeratorPadding, denominatorPadding);
+  const edge = Math.min(3 * taps, x.length - 1);
+  let signal = oddExtension(x, edge);
+  for (let pass = 0; pass < 2; pass++) {
+    for (const [b0, b1, b2, a0, a1, a2] of sos) {
+      signal = filterSteadyState([b0, b1, b2], [a0, a1, a2], signal);
+    }
+    signal.reverse();
   }
-  return signal;
+  return signal.slice(edge, edge + x.length);
 }
 
 // Re-export cAbs for convenience

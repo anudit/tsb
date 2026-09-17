@@ -6,6 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import * as fc from "fast-check";
 import {
+  type FilterType,
   type SOSSection,
   butter,
   cAbs,
@@ -93,7 +94,7 @@ describe("firwin", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 5, max: 51 }).filter((n) => n % 2 === 1),
-        fc.float({ min: 0.01, max: 0.49, noNaN: true }),
+        fc.double({ min: 0.01, max: 0.49, noNaN: true }),
         (taps, cutoff) => {
           const b = firwin(taps, cutoff);
           return b.every(Number.isFinite);
@@ -106,6 +107,11 @@ describe("firwin", () => {
 // ─── freqz ────────────────────────────────────────────────────────────────────
 
 describe("freqz", () => {
+  test("a unit delay has negative phase when numerator and denominator lengths differ", () => {
+    const { H } = freqz([0, 1], [1], [Math.PI / 2]);
+    expect(H[0]?.re).toBeCloseTo(0, 12);
+    expect(H[0]?.im).toBeCloseTo(-1, 12);
+  });
   test("FIR identity filter (b=[1]) — H=1 everywhere", () => {
     const { H } = freqz([1], [1], 32);
     for (const h of H) {
@@ -153,6 +159,91 @@ describe("freqz", () => {
 // ─── butter ───────────────────────────────────────────────────────────────────
 
 describe("butter", () => {
+  // scipy.signal.butter(3, cutoff, btype=type), SciPy 1.18.1.
+  const references: {
+    type: FilterType;
+    cutoff: number | readonly [number, number];
+    b: number[];
+    a: number[];
+  }[] = [
+    {
+      type: "lowpass",
+      cutoff: 0.3,
+      b: [0.04953299635725318, 0.14859898907175956, 0.14859898907175956, 0.04953299635725318],
+      a: [1, -1.1619174836717323, 0.6959427557896507, -0.13776130125989283],
+    },
+    {
+      type: "highpass",
+      cutoff: 0.3,
+      b: [0.3744526925901595, -1.1233580777704786, 1.1233580777704786, -0.3744526925901595],
+      a: [1, -1.1619174836717328, 0.6959427557896509, -0.13776130125989286],
+    },
+    {
+      type: "bandpass",
+      cutoff: [0.2, 0.4],
+      b: [
+        0.01809893300751444, 0, -0.05429679902254332, 0, 0.05429679902254332, 0,
+        -0.01809893300751444,
+      ],
+      a: [
+        1, -2.941867669925039, 4.7023172884643305, -4.634109656210411, 3.0774477936582785,
+        -1.2466196810240529, 0.2780599176345464,
+      ],
+    },
+    {
+      type: "bandstop",
+      cutoff: [0.2, 0.4],
+      b: [
+        0.5276243825019431, -1.9565388100762569, 4.0012881173766335, -4.909519387006988,
+        4.001288117376634, -1.9565388100762573, 0.5276243825019431,
+      ],
+      a: [
+        1, -2.9418676699250383, 4.7023172884643305, -4.634109656210412, 3.077447793658279,
+        -1.246619681024053, 0.2780599176345464,
+      ],
+    },
+  ];
+
+  for (const reference of references) {
+    test(`${reference.type} coefficients match SciPy`, () => {
+      const { b, a } = butter(3, reference.cutoff, reference.type);
+      expect(b.length).toBe(reference.b.length);
+      expect(a.length).toBe(reference.a.length);
+      for (let i = 0; i < b.length; i++) {
+        expect(b[i]).toBeCloseTo(reference.b[i] ?? 0, 11);
+        expect(a[i]).toBeCloseTo(reference.a[i] ?? 0, 11);
+      }
+    });
+  }
+
+  test("band filters retain their order for both real and complex transformed pole pairs", () => {
+    for (const type of ["bandpass", "bandstop"] satisfies readonly FilterType[]) {
+      for (const cutoff of [
+        [0.2, 0.4],
+        [0.1, 0.9],
+      ] satisfies readonly [number, number][]) {
+        for (const order of [1, 2, 3, 4]) {
+          const { sos, a } = butter(order, cutoff, type);
+          expect(sos.length).toBe(order);
+          expect(a.length).toBe(2 * order + 1);
+          const frequencies = [0, cutoff[0] * Math.PI, cutoff[1] * Math.PI, Math.PI];
+          const magnitudes = sosfreqz(sos, frequencies).H.map(cAbs);
+          expect(magnitudes[1]).toBeCloseTo(Math.SQRT1_2, 10);
+          expect(magnitudes[2]).toBeCloseTo(Math.SQRT1_2, 10);
+          expect(magnitudes[0]).toBeCloseTo(type === "bandpass" ? 0 : 1, 10);
+          expect(magnitudes[3]).toBeCloseTo(type === "bandpass" ? 0 : 1, 10);
+        }
+      }
+    }
+  });
+
+  test("invalid critical frequencies fail before producing non-finite filters", () => {
+    for (const cutoff of [0, 1, -0.2, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => butter(2, cutoff)).toThrow(RangeError);
+    }
+    expect(() => butter(2, [0.4, 0.2], "bandpass")).toThrow(RangeError);
+    expect(() => butter(2, [0.2, 0.2], "bandstop")).toThrow(RangeError);
+  });
   test("returns sos, b, a arrays", () => {
     const result = butter(2, 0.3);
     expect(Array.isArray(result.sos)).toBe(true);
@@ -213,7 +304,7 @@ describe("butter", () => {
   });
 
   test("lowpass with highpass type requires scalar", () => {
-    expect(() => butter(2, [0.1, 0.4] as unknown as number, "lowpass")).toThrow();
+    expect(() => butter(2, [0.1, 0.4], "lowpass")).toThrow();
   });
 
   test("highpass filter attenuates DC", () => {
@@ -325,6 +416,32 @@ describe("lfilter", () => {
 // ─── filtfilt ─────────────────────────────────────────────────────────────────
 
 describe("filtfilt", () => {
+  test("matches SciPy endpoint transients with non-unit a[0]", () => {
+    const x = Array.from(
+      { length: 24 },
+      (_, i) => 3 + 0.1 * i + (i === 1 ? 2 : 0) + (i === 22 ? -1 : 0),
+    );
+    // scipy.signal.filtfilt([0.2, 0.1], [2, -0.8, 0.1], x), SciPy 1.18.1.
+    const expected = [
+      0.15976330987316759, 0.19561507259721908, 0.19262472745055467, 0.1830975397172099,
+      0.18289772034263999, 0.18675569044048607, 0.19177040790771188, 0.1970449348444447,
+      0.20236554819647765, 0.20769160570136688, 0.21301753710900065, 0.21834314916479322,
+      0.22366865489500215, 0.22899418905081517, 0.23431987759331033, 0.2396456283055787,
+      0.2449686568542419, 0.2502686422039191, 0.2554387228253477, 0.2600304297618553,
+      0.26259324196892964, 0.2604923701048751, 0.2616599202775737, 0.28224852817042756,
+    ];
+    const actual = filtfilt([0.2, 0.1], [2, -0.8, 0.1], x);
+    for (let i = 0; i < expected.length; i++) {
+      expect(actual[i]).toBeCloseTo(expected[i] ?? 0, 12);
+    }
+  });
+
+  test("a constant record begins and ends at the squared DC gain", () => {
+    const { b, a } = butter(3, 0.3);
+    const result = filtfilt(b, a, new Array<number>(32).fill(7));
+    for (const value of result) expect(value).toBeCloseTo(7, 11);
+    expect(filtfilt(b, a, [])).toEqual([]);
+  });
   test("zero phase: applies filter forward and backward", () => {
     const x = Array.from({ length: 64 }, (_, i) => Math.sin((2 * Math.PI * 5 * i) / 64));
     const b = firwin(11, 0.3);
@@ -335,7 +452,7 @@ describe("filtfilt", () => {
   test("symmetric signal stays symmetric", () => {
     const n = 64;
     const x = Array.from({ length: n }, (_, i) => {
-      const t = i < n / 2 ? i : n - i;
+      const t = Math.min(i, n - 1 - i);
       return t;
     });
     const b = firwin(11, 0.4);
@@ -367,6 +484,23 @@ describe("filtfilt", () => {
 // ─── sosfilt / sosfiltfilt ────────────────────────────────────────────────────
 
 describe("sosfilt", () => {
+  test("sosfiltfilt matches SciPy through a fourth-order cascade at both edges", () => {
+    const x = Array.from(
+      { length: 32 },
+      (_, i) => 3 + 0.1 * i + (i === 1 ? 2 : 0) + (i === 30 ? -1 : 0),
+    );
+    // scipy.signal.sosfiltfilt(scipy.signal.butter(4, .3, output="sos"), x).
+    const indices = [0, 1, 2, 4, 8, 16, 24, 28, 29, 30, 31];
+    const expected = [
+      2.999867820831724, 3.425483610296631, 3.6575599513903088, 3.5400064411979577,
+      3.791374669870445, 4.603403320088942, 5.434030583316487, 5.622115887074203, 5.671225526441613,
+      5.8367734686575545, 6.099207063193474,
+    ];
+    const result = sosfiltfilt(butter(4, 0.3).sos, x);
+    for (let i = 0; i < indices.length; i++) {
+      expect(result[indices[i] ?? 0]).toBeCloseTo(expected[i] ?? 0, 11);
+    }
+  });
   test("identity SOS passes signal unchanged", () => {
     const x = [1, 2, 3, 4, 5];
     const sos: SOSSection[] = [[1, 0, 0, 1, 0, 0]];
