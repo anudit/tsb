@@ -11,11 +11,11 @@ sections directly.
 | Branch | `goal/500-goal-execute-scenario-7-against-independent-pandas-snapshots` |
 | PR | #505 |
 | Status | active |
-| Last Run | 2026-09-17T17:43Z (run 35253234863) |
-| Run Count | 3 |
-| Pending Tree | 04d0717e87250ff15d0f077b489cefd2370b5256 |
-| Pending Run | pending push_to_pull_request_branch (run 35253234863), commit 481dfca9 |
-| Verified Head | 659dce5d3109f943bfd71e20de1919d545699aa5 (run 1 candidate; CI run 35247646137 succeeded on this exact SHA) |
+| Last Run | 2026-09-17T18:44Z (run 35259997105) |
+| Run Count | 4 |
+| Pending Tree | 4fec5aef851162c2a92b9ec8624dc43c08fcb573 |
+| Pending Run | pending push_to_pull_request_branch (run 35259997105), commit 4d5c7bf1 |
+| Verified Head | ec17455febf8143cec69147a0d54cda4646f7b92 (tree 821ba368633761bf02fc3a1fec25d924c7d0627d) — reconciled this run: both 481dfca9 and ec17455f are actually published on PR #505 (confirmed via authenticated MCP pull_request_read, matching independent review comment 5719...). The prior run's "unpublished/unrecoverable ec17455f" note was incorrect; corrected here. CI for this exact head (run 35255712600) is `action_required` (0 jobs ran, blocked by the one-new-commit CI-trigger guard per safe-output logs), not yet a passing result. |
 | Completed | false |
 | Completed Reason | - |
 | Blocked | false |
@@ -23,41 +23,42 @@ sections directly.
 
 ## Current Checkpoint
 
-**IMPORTANT for the next run:** this run pushed commit `481dfca9` (tree
-`04d0717e`) to PR #505, which fixes the 3 original review findings
-(materialization overlap, `as` casts, Series shape check). It did **not**
-publish a second local commit `ec17455f` that additionally fixes a
-bigint/duration coercion bug flagged in a *follow-up* independent review
-(issue #500 comment
-https://github.com/githubnext/tsb/issues/500#issuecomment-5718507108),
-because this run's single `push_to_pull_request_branch` call budget was
-already used on `481dfca9`. That `ec17455f` commit only exists in this run's
-local sandbox and is **not recoverable** in a future run (no artifact was
-attached to a safe-output call for it) — the next run must redo this fix
-from scratch on top of whatever the reconciled remote head turns out to be.
+**Reconciliation (this run):** independent review (issue #500 comment
+5719873...) confirmed PR #505's actual observed head after run 3 was
+`ec17455f` (tree `821ba368`), containing **both** `481dfca9` and `ec17455f`
+— the bigint/duration fix was in fact published despite run 3's
+`push_to_pull_request_branch` call limit message; the prior run's memory
+claiming it was unpublished/unrecoverable was stale and has been corrected
+above. This run re-verified that head directly (`git log`/`git diff` against
+the actual checked-out branch, not from memory) before making any change.
 
-The bigint/duration fix (already implemented and verified once, so it can be
-reapplied quickly) is:
-- `tests/xval/strict_compare.ts`'s `encodeRuntimeScalar` must not coerce
-  `bigint` to `Number(...)`/`.toString()` or `TimedeltaLike` to its raw
-  `totalMs` number — both must be tagged (e.g.
-  `{ kind: "BigInt", value: string }` / `{ kind: "Duration", totalMs:
-  number }`) so a tagged runtime value can never structurally match an
-  untagged snapshot number. `assertJsonEqual` must require both sides to
-  carry the same tag before comparing tagged payloads (extract this into a
-  small helper, e.g. `assertTaggedJsonEqual`, to stay under Biome's
-  `noExcessiveCognitiveComplexity` limit of 15).
-- Add regression tests proving:
-  1. A bigint one-past `Number.MAX_SAFE_INTEGER` (`9007199254740993n`) is
-     rejected against a snapshot expecting the rounded value
-     `9007199254740992`.
-  2. A `TimedeltaLike` (`{ totalMs: 1 }`) is rejected against a snapshot
-     expecting the plain number `1`.
+CI for that exact head (run 35255712600) is `action_required` with 0 jobs,
+not a pass — the configured CI-trigger token's guard only fires an extra
+commit for exactly 1 new commit, and this head carries 2 new commits since
+`659dce5d`, so it never got a fresh CI run. This is a known, intentional
+security guard (do not change token scope/approval settings to work around
+it).
 
-This run also replaced the last `as Record<string, unknown>` casts in
-`scenario_7.test.ts`'s snapshot-shape guard with a reusable `hasProperties`
-type-guard helper — that change is captured only in the same unpublished
-`ec17455f` commit and must be redone alongside the bigint/duration fix.
+**This run's change:** removed the single remaining `as const` type
+assertion in `tests/xval/scenario_7.test.ts` (flagged by review as the last
+unmet "no new `as` casts" contract point), replacing it with an explicit
+readonly union-type array annotation — no behavior change, `hasProperties`
+still narrows without a cast. Committed as `4d5c7bf1` (tree `4fec5aef`) on
+top of the real published head `ec17455f`, with no `main` merge.
+
+Verification on this new commit:
+- `bun test ./tests/xval/` → 27 pass, 0 fail (same as prior baseline).
+- `bun test ./tests/` → 9344 pass, 0 fail (same as prior baseline).
+- `bun run typecheck` → clean (initially caught 7 new `noPropertyAccessFromIndexSignature`-style TS4111 errors from the first attempt using `readonly string[]`; fixed by using an explicit readonly union-literal array type instead, then typecheck passed clean).
+- `bun x @biomejs/biome check` on the 3 xval files → 0 errors, only the 4 pre-existing `noNodejsModules` warnings.
+- `python golden/generate.py` then `git diff --exit-code -- golden/generate.py golden/snapshots/` → no diff.
+- `git diff --stat` from the actual PR head (`ec17455f`) → only `tests/xval/scenario_7.test.ts` changed, 8 insertions/8 deletions.
+
+Requested exactly one `push_to_pull_request_branch` call this run for
+`4d5c7bf1`. Publication and its own exact-SHA CI run remain pending until a
+later run reconciles the actual remote branch head and CI evidence — do not
+treat this run's local verification as sufficient for completion.
+
 
 ## Human Guidance
 
@@ -72,9 +73,9 @@ type-guard helper — that change is captured only in the same unpublished
   but flagged that `strict_compare.ts` coerces bigint/duration scalars into
   plain numbers, letting a bigint-off-by-one or a duration object wrongly
   match a plain-number snapshot value. Provided two regression-test snippets
-  to add. **This run (run 3) implemented and verified this fix locally
-  (commit `ec17455f`), but could not publish it — the push budget for this
-  run was already spent on `481dfca9`. The next run must redo this fix.**
+  to add. Run 3 implemented this as local commit `ec17455f`; run 4 confirmed
+  (via authenticated MCP read) that it was in fact published to PR #505
+  alongside `481dfca9`, contrary to run 3's own uncertainty about it.
 - (2026-09-17) Reviewer comment on issue #500 (comment 5718607300): use the
   new trusted branch-preparation helper; resume PR #505's actual head; do
   not merge `main` into this active PR; recover only the test-repair commit,
@@ -91,6 +92,16 @@ type-guard helper — that change is captured only in the same unpublished
   run, commit them together as part of the same local commit sequence
   *before* the single push call, or expect to need an additional run to
   publish follow-up commits.
+- (2026-09-17) Reviewer comment on issue #500 (comment 5719...): **trust
+  actual observed remote head/tree over prior run's own narrative about what
+  did/didn't publish.** Run 3's memory incorrectly claimed `ec17455f` was
+  unpublished/unrecoverable; the real PR #505 head already included it. Run
+  4 always re-reads the actual branch/PR via `git log`/authenticated MCP
+  before trusting memory's publication claims. Also: the CI-trigger token
+  only fires an extra commit when exactly 1 new commit is pushed at once;
+  pushing 2+ commits together means no fresh CI run triggers automatically,
+  so `action_required`/no-jobs is expected in that case, not a failure to
+  fix — do not touch the token/approval configuration to work around it.
 
 ## Evidence Log
 
@@ -143,6 +154,26 @@ type-guard helper — that change is captured only in the same unpublished
   test/lint/typecheck results as sufficient for completion until the
   published SHA's CI is confirmed green and the bigint/duration fix has
   actually reached the PR.
+- **Run 4 (this run):** re-verified the actual PR #505 head via
+  authenticated MCP `pull_request_read` — confirmed `ec17455f` (tree
+  `821ba368`) is the real published head, i.e. run 3's bigint/duration fix
+  *was* published despite its own push-limit rejection message. CI for that
+  exact head (run 35255712600) is `action_required` (0 jobs) — per reviewer
+  explanation, the CI-trigger token's guard only fires for exactly 1 new
+  commit per push, and this head carried 2. Fixed the last outstanding
+  contract point (removed `as const` in `tests/xval/scenario_7.test.ts`,
+  line 66) as new commit `4d5c7bf1` (tree `4fec5aef`) directly on top of
+  `ec17455f`, no `main` merge. Verified: `bun test ./tests/xval/` → 27
+  pass, 0 fail; `bun test ./tests/` → 9344 pass, 0 fail; `bun run
+  typecheck` → clean (after switching from `readonly string[]` to an
+  explicit readonly union-literal array type to avoid new TS4111 errors);
+  `bun x @biomejs/biome check` on the 3 xval files → 0 errors, 4
+  pre-existing warnings; `python golden/generate.py` +
+  `git diff --exit-code` → no diff; `git diff --stat` from `ec17455f` →
+  only `tests/xval/scenario_7.test.ts` changed (8 insertions, 8 deletions).
+  Requested one `push_to_pull_request_branch` call for `4d5c7bf1`. Pending:
+  reconciliation of this new commit's actual remote landing and its own
+  exact-SHA CI run on a later run — this is not yet completion evidence.
 
 ## Run History
 
@@ -168,3 +199,13 @@ type-guard helper — that change is captured only in the same unpublished
   ec17455f, verified locally, but could not publish it — the run's single
   push budget was already used. Pending remote reconciliation of 481dfca9 on
   a later run, which must also redo and publish the bigint/duration fix.
+- Run 4 (workflow-run-id 35259997105, 2026-09-17T18:44Z): reconciled via
+  authenticated MCP that PR #505's actual head is `ec17455f`, containing
+  both `481dfca9` and run 3's bigint/duration fix — correcting run 3's own
+  mistaken "unpublished" claim. Confirmed CI on that exact head is
+  `action_required`/0-jobs due to the CI-trigger token's 1-new-commit-only
+  guard (2 commits were pushed together), not a failure. Fixed the last
+  contract gap (removed `as const` in `scenario_7.test.ts`) as commit
+  `4d5c7bf1`; verified full local evidence; requested one
+  `push_to_pull_request_branch` push. Remote landing + CI for `4d5c7bf1`
+  pending reconciliation on a later run.
