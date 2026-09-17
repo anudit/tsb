@@ -50,6 +50,10 @@ eligible for guarded diagnosis.
   match the expected head, base, policy digest and exception key, and be the
   first workflow run for that key. Workflow-run history supplies deduplication
   for its GitHub retention period; deleting that history also clears the record.
+- Genuine diagnosis receives a bounded metadata packet (actual reason, notes,
+  candidate identity and selected run/job IDs), not full PR prose or logs. It
+  confirms the current head once and inspects at most three targeted resources;
+  missing evidence ends in a qualified report, not repeated discovery calls.
 - The diagnosis agent is read-only. Comment and label outputs remain staged.
   Automatic missing-tool, incomplete-work and failure issues are disabled.
   Results and plans appear in Actions summaries and artifacts.

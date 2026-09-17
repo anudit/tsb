@@ -108,6 +108,8 @@ test("accepts Actions jobs from the current PR's exact trusted CI workflow", asy
   assert.equal(actual.policyAmbiguity, false);
   assert.deepEqual(actual.runIds, [10]);
   assert.deepEqual(actual.evidence["Test & Lint"], {
+    runId: 10,
+    jobId: 100,
     conclusion: "SUCCESS",
     completedAt: "2026-09-17T10:01:00Z",
     startedAt: "2026-09-17T10:00:10Z",
