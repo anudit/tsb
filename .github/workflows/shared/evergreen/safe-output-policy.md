@@ -1,18 +1,23 @@
 # Evergreen Safe Output Policy
 
-Use safe outputs for every visible write or branch mutation.
+Allowed safe outputs in v1:
 
-Allowed actions:
-- Add concise PR comments.
-- Add or remove only Evergreen state labels.
-- Dispatch the `CI` workflow when checks are missing, stale, or blocked.
-- Push repair commits to PR branches that still have the `evergreen` label.
+- PR comments for meaningful work, blockers, human-needed decisions, quota
+  exhaustion, or verified state changes.
+- Non-ready state labels.
+- PR branch pushes for PRs that still have the opt-in label and satisfy trust
+  policy.
+- Workflow dispatch or rerun according to repo policy.
+- Pull request reviews or review comments only when configured.
 
-Disallowed actions:
-- Do not merge PRs.
-- Do not approve PRs.
-- Do not resolve review threads.
-- Do not request reviewers.
-- Do not use shell commands or GitHub tools for write operations that have configured safe outputs.
+Disallowed safe outputs in v1:
 
-Before reporting success, verify the side effect with current GitHub state.
+- Direct PR merge.
+- Base-branch writes.
+- Branch update commits that merge or rebase the base branch into the PR branch;
+  branch freshness is controller-owned.
+- Adding or removing the ready label from the agentic workflow.
+- Secret disclosure in comments, logs, commits, generated policy, or memory.
+
+Every safe output must be verified before the orchestrator describes it as
+successful.

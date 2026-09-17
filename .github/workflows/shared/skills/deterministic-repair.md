@@ -1,14 +1,23 @@
 # Skill: deterministic-repair
 
-Prefer repo-native deterministic work before agentic edits.
+Prefer deterministic repo-native commands and mechanical fixes before agentic
+edits.
 
-Use the installed repo policy and discovered scripts. For this repository, prefer:
-- `bun run typecheck`
-- `bun run lint`
-- `bun test ./tests/`
-- `bun run test:e2e`
-- `bun run build`
-- `python scripts/validate-python-examples.py playground/`
-- `python golden/generate.py` followed by `git diff --exit-code -- golden/snapshots`
+Find documented commands for:
 
-Run targeted commands first when a failure points to a specific area. Apply the smallest patch that can make the gate pass.
+- install
+- build
+- lint
+- format
+- typecheck
+- test
+- code generation
+- workflow compilation or validation
+
+Prefer targeted commands over broad commands. Apply or propose the smallest
+safe patch that clears the current failing gate, not just the first diagnostic.
+For lint and typecheck failures, fix all current mechanical diagnostics from the
+same command when they are local and low-risk, then rerun the command before
+pushing. Prioritize structural blockers, such as large complexity or control
+flow issues, before warning churn that cannot make the gate pass. Route policy
+conflicts to the appropriate review or human decision instead of guessing.

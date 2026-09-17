@@ -65,7 +65,7 @@ safe-outputs:
   push-to-pull-request-branch:
     signed-commits: false
     target: "*"
-    title-prefix: "[Autoloop"
+    required-title-prefix: "[Autoloop"
     protected-files:
       policy: allowed
       exclude:
@@ -562,10 +562,6 @@ If `status == "failure"`, **fix and retry — do not revert, do not accept**:
    - `lower`: completed when `best_metric <= target-metric`.
 
    When the target is met, mark the program as completed (set `Completed: true`, remove the `autoloop-program` label, add `autoloop-completed`).
-
-#### Coordination with PR-health-keeper workflows
-
-If a repo ships a companion PR-health-keeper workflow (e.g., an "Evergreen" workflow that fixes failing CI on open PRs), it should be able to pick up paused Autoloop PRs using the same rules as human-authored PRs. The handoff is via the `pause_reason` field — `ci-fix-exhausted: <signature>`, `stuck in CI fix loop: <signature>`, and `ci-timeout` are all signals that the branch is red and needs an external nudge. Absent such a workflow, the loud pause + structured reason gives a human enough signal to intervene.
 
 **If the metric did not improve**:
 1. Discard the code changes (do not commit them to the long-running branch).

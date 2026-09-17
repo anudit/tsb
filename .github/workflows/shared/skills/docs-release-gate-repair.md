@@ -1,8 +1,8 @@
 # Skill: docs-release-gate-repair
 
-Use this when docs, examples, golden snapshots, or generated documentation block mergeability.
+Use when docs, changelog, release note, generated documentation, or publishing
+checks block mergeability.
 
-Respect repository rules:
-- Do not edit `README.md` unless the PR explicitly requires it and a human confirms.
-- Keep docs changes tied to a failing gate or explicit blocker.
-- For playground examples, validate Python snippets with `python scripts/validate-python-examples.py playground/`.
+Identify the required document artifact, generation command, and reviewer-owned
+release policy. Apply mechanical documentation or generated-file updates when
+safe.

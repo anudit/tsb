@@ -1,12 +1,16 @@
 # Skill: ci-log-parser
 
-Extract normalized failure signatures from failing CI logs.
+Extract normalized failure signatures from failing checks.
 
-For each failing check, capture:
-- check name and workflow name
-- failing command or step
-- failure class: typecheck, lint, unit test, cross-validation, golden snapshot, e2e, build, dependency install, infrastructure, timeout, or unknown
-- relevant file, line, test name, or stack frame when present
-- whether the next move is deterministic repair, targeted reproduction, rerun, or human escalation
+Return:
 
-Keep signatures compact enough to store in `ci-signatures.jsonl`.
+- check or workflow name
+- command that failed
+- tool or framework
+- failure class
+- file, line, and top stack frame when available
+- concise evidence excerpt
+- whether the next move is deterministic repair, policy review, targeted
+  reproduction, rerun, or human escalation
+
+Do not call a failure flaky without direct evidence.

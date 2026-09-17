@@ -1,10 +1,8 @@
 # Skill: autoloop-coordinator
 
-Use this for PRs from `autoloop/**` branches or PRs labeled `autoloop`.
+Use when an automation-authored PR is still receiving generated feature commits
+or is too large for ordinary greenkeeping.
 
-Coordinate with the installed Autoloop conventions:
-- Do not edit `.autoloop/programs/**`.
-- Treat duplicate push and pull_request CI runs as one logical gate.
-- For `autoloop/*-evolve` branches, include `OpenEvolve benchmark` when deciding readiness.
-- Prefer fixing merge blockers over continuing feature iteration.
-- Preserve evidence that Autoloop can use after Evergreen finishes.
+Detect whether the target is moving, whether iteration should pause while gates
+are repaired, and whether the PR should be split, stacked, or escalated. Resume
+feature iteration only after verified gate evidence supports it.

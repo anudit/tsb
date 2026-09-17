@@ -1,11 +1,15 @@
 # Skill: safe-output-verifier
 
-Verify intended GitHub side effects before reporting success.
+Verify that every intended GitHub side effect actually landed.
 
-After requesting a safe output:
-- For labels, reload the issue/PR and confirm the expected labels changed.
-- For comments, confirm the comment exists and points at the intended PR.
-- For branch pushes, confirm the PR head SHA changed to the expected commit and only allowed files changed.
-- For workflow dispatch, confirm the dispatch request was accepted or explain what could not be verified.
+After a safe output request, reload GitHub state and confirm:
 
-If verification fails, report the operation as blocked. Do not use completion language for unverified side effects.
+- comments exist with the expected content and identifier
+- labels were added or removed as expected
+- workflow dispatch or rerun was accepted
+- reviews or review comments exist
+- PR branch pushes changed the head SHA to the expected commit
+- the expected files changed on the PR branch
+
+If verification fails, report the operation as blocked. Do not use completion
+language for unverified side effects.

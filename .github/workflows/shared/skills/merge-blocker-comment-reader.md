@@ -1,12 +1,13 @@
 # Skill: merge-blocker-comment-reader
 
-Read human comments only for merge-blocking signals.
+Read human discussion only for merge-blocking signals.
 
-Look for:
-- requested changes reviews
-- unresolved review threads
-- comments that explicitly block merge
-- comments asking for required tests, docs, screenshots, or policy decisions
-- maintainer instructions that change the repair plan
+Identify:
 
-Ignore non-blocking suggestions, thanks, progress chatter, and general discussion. Return a blocker map with source URLs.
+- requested changes that are configured merge gates
+- unresolved review threads that block mergeability
+- maintainer comments that explicitly require action before merge
+- credential, deployment, release, policy, or ownership decisions
+
+Ignore non-blocking suggestions and general review commentary. Return a blocker
+map with source comment or review identifiers.

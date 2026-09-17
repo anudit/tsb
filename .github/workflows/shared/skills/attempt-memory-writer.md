@@ -1,11 +1,19 @@
 # Skill: attempt-memory-writer
 
-Store semantic attempt state without turning memory into a run log.
+Write structured memory for future-useful attempt state.
 
-Write small structured entries under `/tmp/gh-aw/repo-memory/evergreen/`:
-- `ci-signatures.jsonl` for reusable failure signatures and outcomes.
-- `skill-outcomes.jsonl` for selected skills and whether they helped.
-- `review-patterns.jsonl` for repeated merge-blocking human feedback.
-- `velocity.jsonl` for label-to-action, label-to-green, and label-to-ready timing.
+Record:
 
-Do not count empty CI trigger commits as semantic repair attempts. Preserve enough source identifiers to audit the memory later.
+- PR number
+- raw head SHA
+- semantic head key when available
+- failure signatures
+- selected skills
+- deterministic commands run
+- patches or safe outputs attempted
+- safe-output verification status
+- repeated attempts to avoid
+- next action
+
+Do not write secrets, raw logs, or noisy run transcripts. Ignore trigger-only
+empty commits when updating semantic attempt counters.

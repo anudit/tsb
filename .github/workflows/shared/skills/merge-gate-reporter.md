@@ -1,14 +1,18 @@
 # Skill: merge-gate-reporter
 
-Decide whether the PR is ready, blocked, human-needed, exhausted, or should continue.
+Report gate evidence without owning the ready label.
 
 Evaluate:
-- draft state
-- conflict and mergeability state
-- current-head CI gates
-- review decision and unresolved threads
-- required and blocker labels
-- repo-specific policy gates
-- quota state
 
-Produce a concise gate table for comments. State only evidence-backed conclusions. Never directly merge a pull request.
+- current-head CI/check gates
+- merge conflicts
+- branch freshness
+- draft state
+- review and CODEOWNERS requirements
+- unresolved review threads
+- required and blocker labels
+- docs, release, deployment, security, or other configured gates
+
+Produce a concise gate table and one final state: return-to-controller,
+blocked, needs-human, waiting, or continue. Do not request or mutate a ready
+label.

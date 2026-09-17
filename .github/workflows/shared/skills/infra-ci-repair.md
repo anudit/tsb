@@ -1,5 +1,8 @@
 # Skill: infra-ci-repair
 
-Use this when the blocker is in GitHub Actions, runner setup, package installation, workflow permissions, generated workflow locks, or CI activation.
+Use when GitHub Actions, runner, permission, environment, build script, or
+deployment automation failures block mergeability.
 
-First determine whether the failure is caused by the PR code, workflow configuration, external infrastructure, or missing credentials. For workflow-source changes under `.github/workflows/*.md`, the repo requires `gh aw compile` and `apm compile`; if the runtime cannot safely push workflow files, label `evergreen-human-needed` and comment with exact next steps.
+Distinguish PR-caused failures from platform or credential failures. Prefer
+rerun, dispatch, configuration repair, or human escalation before changing
+product code.

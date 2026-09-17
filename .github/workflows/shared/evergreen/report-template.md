@@ -1,19 +1,13 @@
 # Evergreen Report Template
 
-Keep comments short and evidence-backed.
+Use short reports. Prefer no comment when state has not changed.
 
-Use this shape:
+Required fields when commenting:
 
-```markdown
-### Evergreen status
+- Current blocker or action.
+- Evidence source.
+- What changed, if anything.
+- What happens next.
 
-| Gate | State | Evidence |
-| --- | --- | --- |
-| Test & Lint | passing | current head SHA |
-
-**Result:** ready | blocked | human-needed | exhausted | continuing
-
-Next action: one sentence.
-```
-
-Include at most three workflow run links. Do not paste long logs; summarize the failure signature and link to the run.
+Avoid broad narration. Do not say a fix landed, a check is green, or a PR is
+ready unless the relevant GitHub state proves it.

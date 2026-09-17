@@ -1,13 +1,16 @@
 # Skill: repo-memory-reader
 
-Load durable repository knowledge before making a repair plan.
+Load durable repository knowledge that is relevant to the current pass.
 
-Read relevant files under `/tmp/gh-aw/repo-memory/evergreen/` if they exist:
-- `gates.json`
-- `labels.json`
-- `ci-signatures.jsonl`
-- `review-patterns.jsonl`
-- `skill-outcomes.jsonl`
-- `velocity.jsonl`
+Read memory for:
 
-Summarize only knowledge that applies to the current PR. Treat current GitHub state and the installed repo policy as more authoritative than memory when they disagree. Do not copy large memory files into comments.
+- merge gates and branch protection expectations
+- label meanings
+- known flaky checks and rerun policy
+- reusable accepted fixes
+- review patterns that affect mergeability
+- prior skill outcomes
+- velocity metrics
+
+Return only relevant memory with source filenames or identifiers. Current GitHub
+state wins over stale or contradictory memory.
