@@ -98,6 +98,7 @@
       margin-top: 0.5rem;
     }
     .info-box li { margin-bottom: 0.25rem; }
+    #measurement-status { white-space: pre-line; border-color: var(--orange); }
 
     .timestamp {
       color: #484f58;
@@ -127,9 +128,11 @@
   <h1>⚡ Performance Benchmarks</h1>
   <p class="desc">
     Side-by-side performance comparison of <code>tsb</code> (TypeScript/Bun) vs
-    <code>pandas</code> (Python). Each function is benchmarked with identical datasets
-    and the same number of iterations.
+    <code>pandas</code> (Python). Workloads vary by benchmark; comparable inputs
+    and operations must be verified before drawing conclusions.
   </p>
+
+  <p id="measurement-status" class="info-box" role="status" hidden></p>
 
   <div id="no-data" style="display: none;">
     <p>📊 No benchmark data available yet.</p>
@@ -159,13 +162,11 @@
   <!-- Methodology -->
   <div class="info-box">
     <h3>📐 Methodology</h3>
-    <p>Each benchmark follows a consistent protocol:</p>
+    <p>Read the individual benchmark scripts and report metadata before comparing:</p>
     <ul>
-      <li><strong>Dataset</strong>: 100,000 elements, deterministic generation</li>
-      <li><strong>Warm-up</strong>: 5 untimed iterations</li>
-      <li><strong>Measured</strong>: 50 timed iterations, mean reported</li>
-      <li><strong>tsb runtime</strong>: Bun (latest)</li>
-      <li><strong>pandas runtime</strong>: CPython + pandas (latest)</li>
+      <li><strong>Dataset and operation</strong>: defined separately in each paired script</li>
+      <li><strong>Warm-up and measurement</strong>: iteration counts vary; reported timings are means</li>
+      <li><strong>Environment</strong>: new reports record runtime versions, concurrency, timeout, and measured commit</li>
       <li><strong>Ratio</strong>: tsb_time / pandas_time — below 1.0 means tsb is faster</li>
     </ul>
   </div>
@@ -175,8 +176,8 @@
     <p>
       These benchmarks are generated automatically by the Autoloop
       <code>perf-comparison</code> program. Each iteration adds a new function
-      comparison. Results are updated on every accepted iteration and deployed
-      to this page.
+      comparison. The Pages workflow collects and publishes results when
+      <code>main</code> changes.
     </p>
   </div>
 
@@ -188,6 +189,31 @@
   </footer>
 
   <script>
+    function measurementDisclosure(data) {
+      const summary = data.summary;
+      const scope = data.scope;
+      const counts = [summary?.completed, summary?.total, summary?.failed, scope?.discovered_pairs];
+      const known = data.schema_version === 2 && counts.every((count) => Number.isInteger(count) && count >= 0)
+        && summary.completed + summary.failed === summary.total && summary.total > 0
+        && scope.discovered_pairs >= summary.total && ["all", "filtered"].includes(scope.kind)
+        && (scope.kind === "filtered" || scope.discovered_pairs === summary.total);
+      const lines = [];
+      if (known) {
+        const incomplete = data.status !== "complete" || summary.failed > 0;
+        lines.push(incomplete ? "Incomplete measurement." : scope.kind === "filtered"
+          ? "Filtered measurement — not the full benchmark suite." : "Measurement collection complete for discovered pairs.");
+        lines.push(`${summary.completed}/${summary.total} selected pairs completed; ${scope.discovered_pairs} pairs discovered; ${summary.failed} failed.`);
+      } else {
+        lines.push("Coverage/provenance unknown: this report lacks validated collection metadata.");
+      }
+      const sha = data.provenance?.candidate_sha;
+      lines.push(typeof sha === "string" && /^[0-9a-f]{40,64}$/.test(sha)
+        ? `Measured SHA: ${sha}${data.provenance.working_tree_dirty ? " (includes local changes)" : ""}.`
+        : "Measured SHA: unknown.");
+      lines.push("Measured timings are not proof of correctness, API parity, or overall performance parity.");
+      return lines.join("\n");
+    }
+
     // Load benchmark results and render
     (async function () {
       const noData = document.getElementById("no-data");
@@ -195,6 +221,7 @@
       const benchTable = document.getElementById("bench-table");
       const benchTbody = document.getElementById("bench-tbody");
       const benchTimestamp = document.getElementById("bench-timestamp");
+      const measurementStatus = document.getElementById("measurement-status");
 
       let data;
       try {
@@ -213,6 +240,8 @@
         }
       }
 
+      measurementStatus.hidden = false;
+      measurementStatus.textContent = measurementDisclosure(data);
       const benchmarks = data.benchmarks || [];
       if (benchmarks.length === 0) {
         noData.style.display = "block";
@@ -230,11 +259,13 @@
       // Render table
       for (const b of benchmarks) {
         const ratio = b.ratio;
-        const faster = ratio < 1 ? "tsb" : "pandas";
-        const badgeClass = ratio < 1 ? "fast" : "slow";
-        const fasterClass = ratio < 1 ? "faster-tsb" : "faster-pandas";
-        const displayRatio = ratio < 1
-          ? (1 / ratio).toFixed(2) + "x faster"
+        const validRatio = typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0
+          && [b.tsb.mean_ms, b.pandas.mean_ms].every((mean) => typeof mean === "number" && Number.isFinite(mean) && mean > 0);
+        const faster = !validRatio ? "unavailable" : ratio < 1 ? "tsb" : "pandas";
+        const badgeClass = !validRatio ? "" : ratio < 1 ? "fast" : "slow";
+        const fasterClass = !validRatio ? "" : ratio < 1 ? "faster-tsb" : "faster-pandas";
+        const displayRatio = !validRatio ? "unresolvable timing ratio" : ratio < 1
+          ? (Number.isFinite(1 / ratio) ? (1 / ratio).toFixed(2) + "x faster" : "speedup exceeds display range")
           : ratio.toFixed(2) + "x slower";
 
         const tr = document.createElement("tr");
@@ -242,7 +273,7 @@
           "<td>" + b.function.replace(/_/g, " ") + "</td>" +
           "<td>" + b.tsb.mean_ms + "</td>" +
           "<td>" + b.pandas.mean_ms + "</td>" +
-          '<td><span class="ratio-badge ' + badgeClass + '">' + ratio + "x</span></td>" +
+          '<td><span class="ratio-badge ' + badgeClass + '">' + (validRatio ? ratio + "x" : "unavailable") + "</span></td>" +
           '<td class="' + fasterClass + '">' + faster + " (" + displayRatio + ")</td>";
         benchTbody.appendChild(tr);
       }

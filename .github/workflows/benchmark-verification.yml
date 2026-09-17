@@ -1,0 +1,98 @@
+name: Benchmark Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      pairs:
+        description: Exact comma-separated matched benchmark names (maximum 16).
+        default: join,rolling_mean,groupby_mean,series_sum_mean
+        required: true
+        type: string
+  pull_request:
+    paths:
+      - benchmarks/tsb/**
+      - benchmarks/pandas/**
+      - benchmarks/runner.py
+      - benchmarks/run_benchmarks.sh
+      - .github/workflows/benchmark-verification.yml
+      - .github/workflows/scripts/benchmark_selection.py
+      - .github/workflows/scripts/test_benchmark_selection.py
+
+# PR benchmark code is untrusted, including on forks. No secrets, write scopes,
+# protected environments, or publication; this worker only uploads evidence.
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Measure selected benchmark pairs
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the exact candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select a bounded benchmark tranche
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          INPUT_PAIRS: ${{ inputs.pairs || '' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/benchmark-verification"
+          python3 .github/workflows/scripts/benchmark_selection.py \
+            --output "$RUNNER_TEMP/benchmark-verification/selection.json" \
+            2>&1 | tee "$RUNNER_TEMP/benchmark-verification/selection.log"
+
+      - name: Setup Bun
+        if: steps.select.outputs.should_run == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+
+      - name: Setup Python
+        if: steps.select.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install benchmark dependencies
+        if: steps.select.outputs.should_run == 'true'
+        run: |
+          bun install --frozen-lockfile --ignore-scripts \
+            2>&1 | tee "$RUNNER_TEMP/benchmark-verification/bun-install.log"
+          python -m pip install pandas==2.2.3 numpy==2.1.3 \
+            2>&1 | tee "$RUNNER_TEMP/benchmark-verification/python-install.log"
+
+      - name: Measure every selected pair serially
+        if: steps.select.outputs.should_run == 'true'
+        env:
+          BENCHMARK_FILTER: ${{ steps.select.outputs.pairs }}
+          BENCHMARK_WORKERS: '1'
+          BENCHMARK_STRICT: '1'
+          BENCHMARK_TIMEOUT: '30'
+        run: |
+          python benchmarks/runner.py --ts-runner bun \
+            --output "$RUNNER_TEMP/benchmark-verification/results.json" \
+            2>&1 | tee "$RUNNER_TEMP/benchmark-verification/benchmark.log"
+
+      - name: Preserve exact-candidate evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-verification/
+          if-no-files-found: warn
+          retention-days: 14
