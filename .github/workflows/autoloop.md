@@ -118,28 +118,6 @@ imports:
   - shared/reporting.md
 
 steps:
-  - name: Clone repo-memory for scheduling
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      GITHUB_SERVER_URL: ${{ github.server_url }}
-    run: |
-      # Clone the repo-memory branch so the scheduling step can read persisted state
-      # from previous runs.  The framework-managed repo-memory clone happens after
-      # pre-steps, so we perform an early shallow clone here.
-      MEMORY_DIR="/tmp/gh-aw/repo-memory/autoloop"
-      BRANCH="memory/autoloop"
-      mkdir -p "$(dirname "$MEMORY_DIR")"
-      REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-      AUTH_URL="$(echo "$REPO_URL" | sed "s|https://|https://x-access-token:${GH_TOKEN}@|")"
-      if git ls-remote --exit-code --heads "$AUTH_URL" "$BRANCH" > /dev/null 2>&1; then
-        git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_URL" "$MEMORY_DIR" 2>&1
-        echo "Cloned repo-memory branch to $MEMORY_DIR"
-      else
-        mkdir -p "$MEMORY_DIR"
-        echo "No repo-memory branch found yet (first run). Created empty directory."
-      fi
-
   - name: Check which programs are due
     env:
       GITHUB_TOKEN: ${{ github.token }}
@@ -396,6 +374,10 @@ All three reference each other. The program issue is created (or, for issue-base
 
 Each run executes **one iteration for the single selected program**:
 
+The framework clones and uploads the authoritative memory directory at
+`/tmp/gh-aw/repo-memory/default/` before the scheduling step. Read and write
+durable state only in this directory; a separate clone is not persisted.
+
 ### Step 1: Read State
 
 1. Read the program file to understand the goal, targets, and evaluation method.
@@ -447,6 +429,13 @@ the run before starting Step 2.
 1. Run the evaluation command specified in the program file.
 2. Parse the metric from the output.
 3. Compare against `best_metric` from the state file.
+4. Validate the work against `AGENTS.md` before treating the metric as evidence.
+   Feature modules must implement real behavior, have public exports, meaningful
+   tests, and the required playground page. Count only validated feature modules;
+   repeated placeholders, duplicate files, trivial exported constants, or tests
+   that merely repeat the implementation do not establish feature progress.
+   Never pad a file count to improve the score. If the metric rewards such files,
+   report the discrepancy and retain the prior accepted metric.
 
 ### Step 5: Accept or Reject
 
@@ -495,15 +484,43 @@ when `Pending Tree` is present.
    cause, and start a fresh candidate from the current remote tip on a later
    run. If another actor changed the branch, inspect and evaluate that new head
    before proceeding. Do not overwrite it or advance the metric.
-2. For the matching remote head SHA, find the latest `CI` run whose `headSha`
-   matches using `gh run list --workflow CI --commit <sha> --json
-   databaseId,headSha,status,conclusion`. Inspect it with `gh run view <run-id>
-   --json headSha,status,conclusion,jobs`.
-3. Require a completed successful run for that exact SHA, with all four gates
-   present and successful: `Test & Lint`, `Playground E2E (Playwright)`, `Build`,
-   and `Validate Python Examples`. Missing, pending, skipped, stale, or failed
-   gates do not establish acceptance. If CI has not finished, record `pending-ci`
-   and yield; a later scheduled run will reconcile it.
+2. For the matching remote head SHA, query and evaluate CI with the trusted
+   helper. Use the exact fetched remote head as `sha`; keep `set -o pipefail`
+   enabled so a failed query cannot look like an empty successful check list:
+
+   ```bash
+   set -o pipefail
+   gh run list --workflow CI --commit "$sha" --limit 100 \
+     --json databaseId,headSha,createdAt,status,conclusion > /tmp/gh-aw/agent/ci-runs.json
+   run_id=$(python3 .github/workflows/scripts/automation_ci.py select "$sha" \
+     < /tmp/gh-aw/agent/ci-runs.json)
+   gh run view "$run_id" --json headSha,status,conclusion,jobs > /tmp/gh-aw/agent/ci-run.json
+   run_status=$(python3 .github/workflows/scripts/automation_ci.py status "$sha" \
+     < /tmp/gh-aw/agent/ci-run.json)
+   gh pr view "$pr" --json headRefOid,statusCheckRollup > /tmp/gh-aw/agent/pr-checks.json
+   pr_status=$(python3 .github/workflows/scripts/automation_ci.py pr-status "$sha" \
+     < /tmp/gh-aw/agent/pr-checks.json)
+   if [ "$run_status" = success ] && [ "$pr_status" = success ]; then
+     echo success
+   else
+     printf 'Run status: %s; PR gates: %s\n' "$run_status" "$pr_status"
+   fi
+   ```
+
+   Stop this sequence if any command fails. No matching run is pending evidence,
+   not success. The selector chooses the newest CI run for the exact SHA by
+   creation time and run ID, independent of API response order; use that run even
+   when an older duplicate succeeded. Never cherry-pick green jobs across runs.
+3. Both the selected run and the exact-head PR rollup must return `success`:
+   the run is complete and successful, and all four required gates are present
+   and successful in both sources. A newer successful push or manual CI run
+   cannot override a failing or pending pull-request gate for the same SHA.
+   Missing, pending, skipped, stale, or failed gates do not establish acceptance.
+   If CI has not finished, record `pending-ci` and yield; a later scheduled run
+   will reconcile it. Immediately before acceptance, re-read the branch head and
+   re-select the latest CI run and re-read the PR rollup; if the head or selected
+   run changed, or any required PR gate stopped succeeding, defer and evaluate
+   the new evidence instead of accepting the old snapshot.
 4. If CI fails, read the failing job logs, record a normalized failure signature,
    and make a focused repair on the current remote branch. Run the relevant
    local checks, re-evaluate the candidate metric, increment `CI Fix Attempts`,

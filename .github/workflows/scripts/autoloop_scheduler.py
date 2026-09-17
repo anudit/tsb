@@ -70,9 +70,9 @@ github_token = os.environ.get("GITHUB_TOKEN", "")
 repo = os.environ.get("GITHUB_REPOSITORY", "")
 forced_program = os.environ.get("AUTOLOOP_PROGRAM", "").strip()
 
-# Repo-memory files are cloned to /tmp/gh-aw/repo-memory/{id}/ where {id}
-# is derived from the branch-name configured in the tools section (memory/autoloop → autoloop)
-repo_memory_dir = "/tmp/gh-aw/repo-memory/autoloop"
+# The single repo-memory tool has id "default", independently of its branch name.
+# Use the same directory the framework clones and uploads after the agent.
+repo_memory_dir = "/tmp/gh-aw/repo-memory/default"
 
 def parse_machine_state(content):
     """Parse the ⚙️ Machine State table from a state file. Returns a dict."""

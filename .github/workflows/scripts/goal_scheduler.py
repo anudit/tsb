@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 
 GOAL_LABEL = "goal"
 COMPLETED_LABEL = "goal-completed"
-REPO_MEMORY_DIR = "/tmp/gh-aw/repo-memory/goal"
+REPO_MEMORY_DIR = "/tmp/gh-aw/repo-memory/default"
 OUTPUT_DIR = "/tmp/gh-aw"
 OUTPUT_FILE = os.path.join(OUTPUT_DIR, "goal.json")
 
