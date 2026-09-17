@@ -91,8 +91,8 @@ export function gevCdf(x: number, params: GEVParams): number {
  * @returns Quantile x such that F(x) = p.
  */
 export function gevQuantile(p: number, params: GEVParams): number {
-  if (p <= 0) return -Infinity;
-  if (p >= 1) return Infinity;
+  if (p <= 0) return -Number.POSITIVE_INFINITY;
+  if (p >= 1) return Number.POSITIVE_INFINITY;
 
   const { mu, sigma, xi } = params;
 
@@ -101,7 +101,7 @@ export function gevQuantile(p: number, params: GEVParams): number {
     return mu - sigma * Math.log(-Math.log(p));
   }
 
-  return mu + (sigma / xi) * ((-Math.log(p)) ** (-xi) - 1);
+  return mu + (sigma / xi) * ((-Math.log(p)) ** -xi - 1);
 }
 
 /**
@@ -144,8 +144,8 @@ export function fitGEV(maxima: number[]): GEVParams {
 
   for (let i = 0; i < n; i++) {
     b0 += sorted[i] ?? 0;
-    b1 += ((i) / (n - 1)) * (sorted[i] ?? 0);
-    b2 += ((i) * (i - 1) / ((n - 1) * (n - 2))) * (sorted[i] ?? 0);
+    b1 += (i / (n - 1)) * (sorted[i] ?? 0);
+    b2 += ((i * (i - 1)) / ((n - 1) * (n - 2))) * (sorted[i] ?? 0);
   }
   b0 /= n;
   b1 /= n;
@@ -176,8 +176,8 @@ export function fitGEV(maxima: number[]): GEVParams {
     mu = l1 - 0.5772156649 * sigma;
   } else {
     const g1 = gamma(1 - xi);
-    sigma = (l2 * xi) / ((1 - 2 ** (-xi)) * g1);
-    mu = l1 - sigma * (g1 - 1) / xi;
+    sigma = (l2 * xi) / ((1 - 2 ** -xi) * g1);
+    mu = l1 - (sigma * (g1 - 1)) / xi;
   }
 
   return {
@@ -256,7 +256,7 @@ export function gpdCdf(x: number, params: GPDParams): number {
  */
 export function gpdQuantile(p: number, params: GPDParams): number {
   if (p <= 0) return params.threshold;
-  if (p >= 1) return Infinity;
+  if (p >= 1) return Number.POSITIVE_INFINITY;
 
   const { threshold, sigma, xi } = params;
 
@@ -264,7 +264,7 @@ export function gpdQuantile(p: number, params: GPDParams): number {
     return threshold - sigma * Math.log(1 - p);
   }
 
-  return threshold + (sigma / xi) * ((1 - p) ** (-xi) - 1);
+  return threshold + (sigma / xi) * ((1 - p) ** -xi - 1);
 }
 
 // ─── GPD Fitting (MLE) ────────────────────────────────────────────────────────
@@ -295,8 +295,8 @@ export function fitGPD(data: number[], threshold: number): GPDParams {
   const variance = exceedances.reduce((s, x) => s + (x - mean) ** 2, 0) / (n - 1);
 
   // Method of moments starting values
-  let sigmaInit = mean * (mean * mean / variance + 1) / 2;
-  let xiInit = (mean * mean / variance - 1) / 2;
+  let sigmaInit = (mean * ((mean * mean) / variance + 1)) / 2;
+  const xiInit = ((mean * mean) / variance - 1) / 2;
 
   sigmaInit = Math.max(sigmaInit, 1e-6);
 
@@ -327,11 +327,7 @@ export function extractExceedances(data: number[], threshold: number): number[] 
  * @param lambda - Rate of threshold exceedances (exceedances per time unit).
  * @returns Return level.
  */
-export function gpdReturnLevel(
-  returnPeriod: number,
-  params: GPDParams,
-  lambda: number,
-): number {
+export function gpdReturnLevel(returnPeriod: number, params: GPDParams, lambda: number): number {
   const p = 1 - 1 / (returnPeriod * lambda);
   return gpdQuantile(Math.max(0, Math.min(1, p)), params);
 }
@@ -372,9 +368,9 @@ function gamma(z: number): number {
   }
   const g = 7;
   const c = [
-    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
-    771.32342877765313, -176.61502916214059, 12.507343278686905,
-    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313,
+    -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6,
+    1.5056327351493116e-7,
   ];
   let x = c[0] ?? 0;
   const zr = z - 1;
@@ -391,7 +387,7 @@ function estimateXiFromTau3(tau3: number): number {
   // For Gumbel: tau3 = 0.1699 (log(3/2) / log(2) - 2)
   // Valid for -0.5 < xi < 0.5
   const c = 2 / (3 + tau3) - Math.log(2) / Math.log(3);
-  return 7.8590 * c + 2.9554 * c * c;
+  return 7.859 * c + 2.9554 * c * c;
 }
 
 /** Simple optimization for GPD parameters. */
@@ -405,14 +401,14 @@ function optimizeGPD(
 
   const logLik = (s: number, x: number): number => {
     const n = exceedances.length;
-    if (s <= 0) return -Infinity;
+    if (s <= 0) return -Number.POSITIVE_INFINITY;
     let ll = -n * Math.log(s);
     for (const e of exceedances) {
       if (Math.abs(x) < 1e-8) {
         ll -= e / s;
       } else {
-        const t = 1 + x * e / s;
-        if (t <= 0) return -Infinity;
+        const t = 1 + (x * e) / s;
+        if (t <= 0) return -Number.POSITIVE_INFINITY;
         ll -= (1 / x + 1) * Math.log(t);
       }
     }

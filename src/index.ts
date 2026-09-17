@@ -1285,7 +1285,12 @@ export {
   aggregateSteps,
   featureImportance,
 } from "./ml/tabnet.ts";
-export type { BatchNormParams, FeatureTransformerWeights, AttentiveTransformerWeights, TabNetStepResult } from "./ml/tabnet.ts";
+export type {
+  BatchNormParams,
+  FeatureTransformerWeights,
+  AttentiveTransformerWeights,
+  TabNetStepResult,
+} from "./ml/tabnet.ts";
 
 export {
   scaledDotProductAttention,
@@ -1319,7 +1324,12 @@ export {
   sigmoid,
   tanh,
 } from "./ml/seq2seq.ts";
-export type { RNNCellWeights, BahdanauWeights, DecoderWeights, DecoderStepResult } from "./ml/seq2seq.ts";
+export type {
+  RNNCellWeights,
+  BahdanauWeights,
+  DecoderWeights,
+  DecoderStepResult,
+} from "./ml/seq2seq.ts";
 
 export {
   rbfKernel,

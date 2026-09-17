@@ -26,28 +26,31 @@ export function normalCdf(x: number): number {
   const a5 = 1.061405429;
   const p = 0.3275911;
   const sign = x < 0 ? -1 : 1;
-  const t = 1 / (1 + p * Math.abs(x) / Math.sqrt(2));
+  const t = 1 / (1 + (p * Math.abs(x)) / Math.sqrt(2));
   const poly = t * (a1 + t * (a2 + t * (a3 + t * (a4 + t * a5))));
   return 0.5 * (1 + sign * (1 - poly * Math.exp(-(x * x) / 2)));
 }
 
 /** Inverse normal CDF (rational approximation, simplified). */
 export function normalQuantile(p: number): number {
-  if (p <= 0) return -Infinity;
-  if (p >= 1) return Infinity;
+  if (p <= 0) return -Number.POSITIVE_INFINITY;
+  if (p >= 1) return Number.POSITIVE_INFINITY;
 
   // Halley's method starting from a rough initial guess
   let x = 0;
   if (p < 0.5) {
     const t = Math.sqrt(-2 * Math.log(p));
-    x = -(2.515517 + 0.802853 * t + 0.010328 * t * t) /
-      (1 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t) + t;
+    x =
+      -(2.515517 + 0.802853 * t + 0.010328 * t * t) /
+        (1 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t) +
+      t;
     x = -x;
   } else {
     const t = Math.sqrt(-2 * Math.log(1 - p));
-    x = (2.515517 + 0.802853 * t + 0.010328 * t * t) /
-      (1 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t) - t;
-    x = x;
+    x =
+      (2.515517 + 0.802853 * t + 0.010328 * t * t) /
+        (1 + 1.432788 * t + 0.189269 * t * t + 0.001308 * t * t * t) -
+      t;
   }
 
   // Refine with Newton-Raphson
@@ -257,7 +260,7 @@ export function kendallTau(data: [number, number][]): number {
     }
   }
 
-  const pairs = n * (n - 1) / 2;
+  const pairs = (n * (n - 1)) / 2;
   return pairs > 0 ? (concordant - discordant) / pairs : 0;
 }
 
@@ -267,7 +270,7 @@ export function kendallTau(data: [number, number][]): number {
  * rho = sin(pi * tau / 2)
  */
 export function tauToGaussianRho(tau: number): number {
-  return Math.sin(Math.PI * tau / 2);
+  return Math.sin((Math.PI * tau) / 2);
 }
 
 /**
@@ -277,7 +280,7 @@ export function tauToGaussianRho(tau: number): number {
  */
 export function tauToClaytonTheta(tau: number): number {
   if (tau <= 0) return 1e-6;
-  return 2 * tau / (1 - tau);
+  return (2 * tau) / (1 - tau);
 }
 
 /**
@@ -304,9 +307,9 @@ function randn(): number {
 /** Bivariate normal CDF approximation via numerical integration. */
 function bivariateNormalCdf(x: number, y: number, rho: number): number {
   // Gauss-Legendre quadrature approximation (20 points)
-  if (x === -Infinity || y === -Infinity) return 0;
-  if (x === Infinity) return normalCdf(y);
-  if (y === Infinity) return normalCdf(x);
+  if (x === -Number.POSITIVE_INFINITY || y === -Number.POSITIVE_INFINITY) return 0;
+  if (x === Number.POSITIVE_INFINITY) return normalCdf(y);
+  if (y === Number.POSITIVE_INFINITY) return normalCdf(x);
 
   // Use Owen's T function approximation
   const bvn = owenBvn(x, y, rho);
@@ -329,15 +332,14 @@ function owenBvn(h: number, k: number, rho: number): number {
     const r = rhoAbs * 0.5 * ((glNodes[i] ?? 0) + 1);
     const sqr = Math.sqrt(1 - r * r);
     const exponent = (r * (2 * h * k - r * (h * h + k * k))) / (2 * (1 - r * r));
-    sum += (glWeights[i] ?? 0) * Math.exp(exponent) / sqr;
+    sum += ((glWeights[i] ?? 0) * Math.exp(exponent)) / sqr;
   }
 
-  const L = rhoAbs * 0.5 * sum / (2 * Math.PI);
+  const L = (rhoAbs * 0.5 * sum) / (2 * Math.PI);
   if (rho >= 0) {
     return normalCdf(h) * normalCdf(k) + L;
-  } else {
-    return Math.max(0, normalCdf(h) - normalCdf(-k) + L);
   }
+  return Math.max(0, normalCdf(h) - normalCdf(-k) + L);
 }
 
 /** Compute ranks of array values (1-indexed). */

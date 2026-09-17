@@ -130,10 +130,7 @@ export interface OUParams {
  * @param params - Optional OUParams.
  * @returns ProcessPath.
  */
-export function simulateOrnsteinUhlenbeck(
-  nSteps: number,
-  params: OUParams = {},
-): ProcessPath {
+export function simulateOrnsteinUhlenbeck(nSteps: number, params: OUParams = {}): ProcessPath {
   const theta = params.theta ?? 1.0;
   const mu = params.mu ?? 0.0;
   const sigma = params.sigma ?? 0.1;
@@ -239,11 +236,7 @@ export function simulatePoissonProcess(rate: number, T: number): number[] {
  * @param T - Total time horizon.
  * @returns Array of event counts per bin.
  */
-export function poissonCounts(
-  arrivals: number[],
-  binSize: number,
-  T: number,
-): number[] {
+export function poissonCounts(arrivals: number[], binSize: number, T: number): number[] {
   const nBins = Math.ceil(T / binSize);
   const counts = new Array<number>(nBins).fill(0);
 
@@ -276,10 +269,7 @@ export interface RandomWalkParams {
  * @param params - Optional RandomWalkParams.
  * @returns ProcessPath with integer times and cumulative positions.
  */
-export function simulateRandomWalk(
-  nSteps: number,
-  params: RandomWalkParams = {},
-): ProcessPath {
+export function simulateRandomWalk(nSteps: number, params: RandomWalkParams = {}): ProcessPath {
   const probs = params.probs ?? [0.5, 0.5];
   const steps = params.steps ?? [1, -1];
   const x0 = params.x0 ?? 0;

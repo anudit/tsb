@@ -195,7 +195,10 @@ export function ordinaryKriging(
 
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      const d = euclideanDistance(knownPoints[i] ?? { x: 0, y: 0 }, knownPoints[j] ?? { x: 0, y: 0 });
+      const d = euclideanDistance(
+        knownPoints[i] ?? { x: 0, y: 0 },
+        knownPoints[j] ?? { x: 0, y: 0 },
+      );
       K[i * size + j] = variogramFn(d, vParams);
     }
     K[i * size + n] = 1;
@@ -287,7 +290,7 @@ export function ripleysK(
     let count = 0;
     for (let i = 0; i < n; i++) {
       for (let j = 0; j < n; j++) {
-        if (i !== j && (D[i * n + j] ?? Infinity) <= r) count++;
+        if (i !== j && (D[i * n + j] ?? Number.POSITIVE_INFINITY) <= r) count++;
       }
     }
     return count / (n * lambda);
@@ -349,13 +352,13 @@ export function kde2d(
  * Build a distance-based spatial weight matrix (inverse distance weighting).
  *
  * @param points - Spatial points.
- * @param maxDist - Maximum distance for neighbors (Infinity = all pairs).
+ * @param maxDist - Maximum distance for neighbors (Number.POSITIVE_INFINITY = all pairs).
  * @param power - Distance decay power. Default 1.
  * @returns Row-standardized weight matrix (flat row-major).
  */
 export function distanceWeights(
   points: { x: number; y: number }[],
-  maxDist = Infinity,
+  maxDist = Number.POSITIVE_INFINITY,
   power = 1,
 ): number[] {
   const n = points.length;
@@ -366,7 +369,7 @@ export function distanceWeights(
     let rowSum = 0;
     for (let j = 0; j < n; j++) {
       if (i === j) continue;
-      const d = D[i * n + j] ?? Infinity;
+      const d = D[i * n + j] ?? Number.POSITIVE_INFINITY;
       if (d <= maxDist && d > 0) {
         W[i * n + j] = 1 / d ** power;
         rowSum += W[i * n + j] ?? 0;

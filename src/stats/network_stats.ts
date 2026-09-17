@@ -140,10 +140,10 @@ export function bfsDistances(g: Graph, source: number): number[] {
  *
  * @param g - The graph.
  * @param source - Source node.
- * @returns Array of shortest-path distances from source (Infinity if unreachable).
+ * @returns Array of shortest-path distances from source (Number.POSITIVE_INFINITY if unreachable).
  */
 export function dijkstra(g: Graph, source: number): number[] {
-  const dist = new Array<number>(g.nNodes).fill(Infinity);
+  const dist = new Array<number>(g.nNodes).fill(Number.POSITIVE_INFINITY);
   dist[source] = 0;
   // Simple priority queue via sorted array (sufficient for small graphs)
   const pq: { node: number; d: number }[] = [{ node: source, d: 0 }];
@@ -153,11 +153,11 @@ export function dijkstra(g: Graph, source: number): number[] {
     const top = pq.shift();
     if (top === undefined) break;
     const { node: u, d } = top;
-    if (d > (dist[u] ?? Infinity)) continue;
+    if (d > (dist[u] ?? Number.POSITIVE_INFINITY)) continue;
 
     for (const { to, weight } of g.adjacency[u] ?? []) {
-      const nd = (dist[u] ?? Infinity) + weight;
-      if (nd < (dist[to] ?? Infinity)) {
+      const nd = (dist[u] ?? Number.POSITIVE_INFINITY) + weight;
+      if (nd < (dist[to] ?? Number.POSITIVE_INFINITY)) {
         dist[to] = nd;
         pq.push({ node: to, d: nd });
       }
@@ -209,9 +209,7 @@ export function betweennessCentrality(g: Graph): number[] {
     while (stack.length > 0) {
       const w = stack.pop() ?? 0;
       for (const v of pred[w] ?? []) {
-        delta[v] =
-          (delta[v] ?? 0) +
-          ((sigma[v] ?? 0) / (sigma[w] ?? 1)) * (1 + (delta[w] ?? 0));
+        delta[v] = (delta[v] ?? 0) + ((sigma[v] ?? 0) / (sigma[w] ?? 1)) * (1 + (delta[w] ?? 0));
       }
       if (w !== s) bc[w] = (bc[w] ?? 0) + (delta[w] ?? 0);
     }
@@ -326,12 +324,7 @@ export function connectedComponents(g: Graph): number[][] {
  * const pr = pageRank(g);
  * ```
  */
-export function pageRank(
-  g: Graph,
-  dampingFactor = 0.85,
-  maxIter = 100,
-  tol = 1e-6,
-): number[] {
+export function pageRank(g: Graph, dampingFactor = 0.85, maxIter = 100, tol = 1e-6): number[] {
   const n = g.nNodes;
   let rank = new Array<number>(n).fill(1 / n);
   const outDeg = g.adjacency.map((adj) => adj.length);
@@ -375,11 +368,7 @@ export function pageRank(
  * @param tol - Convergence tolerance. Default 1e-6.
  * @returns Object with hub and authority score arrays.
  */
-export function hits(
-  g: Graph,
-  maxIter = 100,
-  tol = 1e-6,
-): { hub: number[]; authority: number[] } {
+export function hits(g: Graph, maxIter = 100, tol = 1e-6): { hub: number[]; authority: number[] } {
   const n = g.nNodes;
   let hub = new Array<number>(n).fill(1 / n);
   let auth = new Array<number>(n).fill(1 / n);
@@ -410,8 +399,7 @@ export function hits(
     let diff = 0;
     for (let i = 0; i < n; i++) {
       diff +=
-        Math.abs((newAuth[i] ?? 0) - (auth[i] ?? 0)) +
-        Math.abs((newHub[i] ?? 0) - (hub[i] ?? 0));
+        Math.abs((newAuth[i] ?? 0) - (auth[i] ?? 0)) + Math.abs((newHub[i] ?? 0) - (hub[i] ?? 0));
     }
     auth = newAuth;
     hub = newHub;
