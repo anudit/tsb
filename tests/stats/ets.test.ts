@@ -143,6 +143,9 @@ describe("SimpleExpSmoothing", () => {
     it("initialLevel option overrides default", () => {
       const fit = new SimpleExpSmoothing().fit(TREND, { initialLevel: 5 });
       expect(fit.initialLevel).toBeCloseTo(5, 10);
+      expect(fit.fittedValues[0]).toBe(5);
+      const fixedAlpha = new SimpleExpSmoothing().fit(TREND, { initialLevel: 5, alpha: 0.5 });
+      expect(fit.sse).toBeLessThanOrEqual(fixedAlpha.sse);
     });
   });
 
@@ -380,11 +383,20 @@ describe("ExponentialSmoothing", () => {
       expect(fit.gamma).toBeNull();
     });
 
-    it("SSE roughly matches Holt class", () => {
-      const r1 = new ExponentialSmoothing({ trend: "add" }).fit(TREND);
-      const r2 = new Holt().fit(TREND);
-      // They may find slightly different optima; SSE should be comparable
-      expect(Math.abs(r1.sse - r2.sse) / (r2.sse + 1e-8)).toBeLessThan(0.1);
+    it("matches Holt fitted values and forecasts for the same additive model", () => {
+      const ets = new ExponentialSmoothing({ trend: "add" });
+      const holtModel = new Holt();
+      const r1 = ets.fit(TREND);
+      const r2 = holtModel.fit(TREND);
+      expect(r1.sse).toBeCloseTo(r2.sse, 12);
+      expect(r1.fittedValues).toEqual(r2.fittedValues);
+      expect(ets.forecast(5)).toEqual(holtModel.forecast(5));
+    });
+
+    it("matches Holt for noisy observations", () => {
+      const r1 = new ExponentialSmoothing({ trend: "add" }).fit(AIRLINE);
+      const r2 = new Holt().fit(AIRLINE);
+      expect(r1.sse).toBeCloseTo(r2.sse, 12);
     });
   });
 
@@ -412,7 +424,21 @@ describe("ExponentialSmoothing", () => {
         seasonalPeriods: m,
       }).fit(y);
       const sum = (fit.initialSeasons ?? []).reduce((a, b) => a + b, 0);
-      expect(Math.abs(sum)).toBeLessThan(2);
+      expect(sum).toBeCloseTo(0, 10);
+      const replay = new ExponentialSmoothing({
+        trend: "add",
+        seasonal: "add",
+        seasonalPeriods: m,
+        initializationMethod: "known",
+        initialLevel: fit.initialLevel,
+        initialTrend: fit.initialTrend ?? 0,
+        initialSeasons: fit.initialSeasons ?? [],
+        alpha: fit.alpha,
+        beta: fit.beta ?? 0,
+        gamma: fit.gamma ?? 0,
+      }).fit(y);
+      expect(replay.fittedValues).toEqual(fit.fittedValues);
+      expect(replay.sse).toBe(fit.sse);
     });
 
     it("fitted + residuals = y", () => {
@@ -685,10 +711,13 @@ describe("ExponentialSmoothing", () => {
   });
 
   describe("information criteria", () => {
-    it("log-likelihood is finite and negative", () => {
+    it("log-likelihood matches the Gaussian residual density", () => {
       const fit = fitEts(TREND, { trend: "add" });
       expect(Number.isFinite(fit.logLikelihood)).toBe(true);
-      expect(fit.logLikelihood).toBeLessThan(0);
+      const variance = Math.max(fit.sse / TREND.length, 1e-15);
+      const expected = -0.5 * TREND.length * (Math.log(2 * Math.PI * variance) + 1);
+      // A probability density can exceed 1 when its variance is small.
+      expect(fit.logLikelihood).toBeCloseTo(expected, 10);
     });
 
     it("AICc >= AIC", () => {
@@ -811,7 +840,7 @@ describe("ETS property-based", () => {
     fc.assert(
       fc.property(
         fc.array(fc.float({ min: -50, max: 50, noNaN: true }), { minLength: 2, maxLength: 20 }),
-        fc.float({ min: 0.01, max: 0.99 }),
+        fc.double({ min: 0.01, max: 0.99, noNaN: true }),
         (y, alpha) => {
           const r1 = simpleExpSmoothing(y, { alpha });
           const r2 = simpleExpSmoothing(y, { alpha });

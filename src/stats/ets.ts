@@ -726,6 +726,14 @@ export class SimpleExpSmoothing {
     if (opts?.alpha !== undefined) {
       alpha = clamp(opts.alpha, 1e-6, 1 - 1e-6);
       l0 = l0Init;
+    } else if (opts?.initialLevel !== undefined) {
+      const result = nelderMead(
+        ([a]: readonly number[]) => sesPass(arr, a ?? 0.3, l0Init).sse,
+        [0.3],
+        [[1e-6, 1 - 1e-6]],
+      );
+      alpha = result.params[0] ?? 0.3;
+      l0 = l0Init;
     } else {
       // Optimise α (and optionally l0)
       const result = nelderMead(
@@ -885,7 +893,9 @@ export class Holt {
           const lb0 = optimB0 ? (params[paramNames.indexOf("b0")] ?? b0h) : b0Fixed;
           a = clamp(a, 1e-6, 1 - 1e-6);
           bta = clamp(bta, 1e-6, 1 - 1e-6);
-          ph = clamp(ph, 0.8, 1 - 1e-6);
+          if (damped) {
+            ph = clamp(ph, 0.8, 1 - 1e-6);
+          }
           return holtPass(arr, a, bta, ph, ll0, lb0).sse;
         },
         x0,
@@ -1024,7 +1034,7 @@ export class ExponentialSmoothing {
     const initMethod = merged.initializationMethod ?? "heuristic";
 
     // Heuristic initialisation
-    const { l0: l0h, b0: b0h } = heuristicInit(arr, m, trend !== null);
+    const { l0: l0h, b0: b0h } = heuristicInit(arr, seasonal === null ? n : m, trend !== null);
     const s0h = seasonal !== null ? heuristicSeasons(arr, m, seasonal, l0h, b0h) : null;
 
     // Determine which params to optimise
@@ -1150,6 +1160,14 @@ export class ExponentialSmoothing {
           s0.push(p[paramNames.indexOf(`s0_${j}`)] ?? s0h?.[j] ?? 0);
         }
       }
+    }
+
+    if (optimS0 && optimL0 && seasonal === "add" && trend !== "mul" && s0 !== null) {
+      // Level and additive seasons share an arbitrary offset. Choose zero-mean
+      // seasons and transfer their mean to the level without changing forecasts.
+      const seasonalMean = s0.reduce((sum, value) => sum + value, 0) / m;
+      s0 = s0.map((value) => value - seasonalMean);
+      l0 += seasonalMean;
     }
 
     // Final clamp
