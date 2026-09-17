@@ -70,7 +70,7 @@ pip3 install pandas --quiet 2>/dev/null || true
 if command -v bun &>/dev/null; then
   for f in benchmarks/tsb/bench_*.ts; do
     [ -e "$f" ] || break
-    if ! bun build "$f" --outdir=/tmp/perf-comparison-bench-check >/dev/null 2>&1; then
+    if ! bun build "$f" --target=bun --outdir=/tmp/perf-comparison-bench-check >/dev/null 2>&1; then
       echo "{\"benchmarked_functions\": null, \"rejected_reason\": \"invalid TypeScript benchmark: $f\"}"
       exit 0
     fi

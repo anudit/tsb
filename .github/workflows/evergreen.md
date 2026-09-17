@@ -87,7 +87,7 @@ jobs:
           pr_json() {
             local pr="$1"
             gh pr view "$pr" --repo "$REPO" \
-              --json state,labels,headRefOid,statusCheckRollup,mergeStateStatus,isDraft,baseRefName
+              --json state,labels,headRefOid,headRefName,isCrossRepository,statusCheckRollup,mergeStateStatus,isDraft,baseRefName
           }
 
           pr_is_open() {
@@ -229,7 +229,7 @@ jobs:
             fi
 
             merge_state="$(jq -r '.mergeStateStatus // ""' <<<"$payload")"
-            if [ "$merge_state" = "DIRTY" ] || [ "$merge_state" = "UNKNOWN" ]; then
+            if [ "$merge_state" = "DIRTY" ] || [ "$merge_state" = "UNKNOWN" ] || [ "$merge_state" = "BEHIND" ]; then
               echo "needs_branch_update"
               return 0
             fi
@@ -303,6 +303,14 @@ jobs:
             return 0
           }
 
+          ci_gh() {
+            if [ -z "${CI_TRIGGER_TOKEN:-}" ]; then
+              echo "CI-trigger credential is unavailable; refusing a write that could suppress CI." >&2
+              return 1
+            fi
+            GH_TOKEN="$CI_TRIGGER_TOKEN" "$@"
+          }
+
           trigger_ci_if_needed() {
             # Deterministic, idempotent CI activation for the current PR head SHA.
             # Reruns the most recent "CI" workflow run for this head SHA when it
@@ -311,28 +319,38 @@ jobs:
             # jobs), and does not push commits.
             local pr="$1"
             local head_sha="$2"
-            local run_json run_id status conclusion
+            local run_json run_id status conclusion payload branch
 
-            ci_gh() {
-              if [ -n "${CI_TRIGGER_TOKEN:-}" ]; then
-                GH_TOKEN="$CI_TRIGGER_TOKEN" "$@"
-              else
-                "$@"
-              fi
-            }
-
-            run_json="$(gh run list --repo "$REPO" \
+            if ! run_json="$(gh run list --repo "$REPO" \
               --workflow "CI" \
               --commit "$head_sha" \
               --limit 1 \
-              --json databaseId,status,conclusion 2>/dev/null || echo '[]')"
+              --json databaseId,status,conclusion)"; then
+              set_result "false" "$pr" "$head_sha" "blocked" "ci_lookup:failed"
+              return 1
+            fi
 
             run_id="$(jq -r '.[0].databaseId // empty' <<<"$run_json")"
             status="$(jq -r '.[0].status // empty' <<<"$run_json")"
             conclusion="$(jq -r '.[0].conclusion // empty' <<<"$run_json")"
 
             if [ -z "$run_id" ]; then
-              echo "No CI run found for PR #$pr ($head_sha); leaving for scheduled/PR CI to start."
+              # The default Actions token can create a branch update without
+              # triggering CI. Dispatch missing CI once, only for an unchanged
+              # same-repository PR; the next preflight observes the resulting run.
+              payload="$(pr_json "$pr")"
+              if [ "$(jq -r '.headRefOid' <<<"$payload")" != "$head_sha" ] ||
+                 [ "$(jq -r '.isCrossRepository' <<<"$payload")" != "false" ]; then
+                set_result "false" "$pr" "$head_sha" "blocked" "ci_dispatch:head_changed_or_fork"
+                return 1
+              fi
+              branch="$(jq -r '.headRefName' <<<"$payload")"
+              if ci_gh gh workflow run ci.yml --repo "$REPO" --ref "$branch"; then
+                echo "Requested missing CI for PR #$pr at $head_sha."
+                set_result "false" "$pr" "$head_sha" "waiting" "ci_dispatch:requested"
+                return 0
+              fi
+              set_result "false" "$pr" "$head_sha" "blocked" "ci_dispatch:failed"
               return 1
             fi
 
@@ -370,10 +388,17 @@ jobs:
             local pr="$1"
             local head_sha="$2"
             local reason="$3"
-            local output
+            local output payload
+
+            payload="$(pr_json "$pr")"
+            if [ "$(jq -r '.headRefOid' <<<"$payload")" != "$head_sha" ] ||
+               [ "$(jq -r '.isCrossRepository' <<<"$payload")" != "false" ]; then
+              set_result "false" "$pr" "$head_sha" "blocked" "$reason:head_changed_or_fork"
+              return 1
+            fi
 
             echo "PR #$pr needs a branch update; asking GitHub to merge the base branch into head $head_sha."
-            if output="$(gh api --method PUT \
+            if output="$(ci_gh gh api --method PUT \
               -H "Accept: application/vnd.github+json" \
               -H "X-GitHub-Api-Version: 2022-11-28" \
               "/repos/$REPO/pulls/$pr/update-branch" \

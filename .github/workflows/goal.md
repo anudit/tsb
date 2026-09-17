@@ -45,6 +45,7 @@ safe-outputs:
     preserve-branch-name: true
     max: 1
   push-to-pull-request-branch:
+    signed-commits: false
     target: "*"
     required-title-prefix: "[Goal"
     protected-files:
@@ -80,25 +81,6 @@ imports:
   - shared/goal-reporting.md
 
 steps:
-  - name: Clone repo-memory for scheduling
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GITHUB_REPOSITORY: ${{ github.repository }}
-      GITHUB_SERVER_URL: ${{ github.server_url }}
-    run: |
-      MEMORY_DIR="/tmp/gh-aw/repo-memory/goal"
-      BRANCH="memory/goal"
-      mkdir -p "$(dirname "$MEMORY_DIR")"
-      REPO_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
-      AUTH_URL="$(echo "$REPO_URL" | sed "s|https://|https://x-access-token:${GH_TOKEN}@|")"
-      if git ls-remote --exit-code --heads "$AUTH_URL" "$BRANCH" > /dev/null 2>&1; then
-        git clone --single-branch --branch "$BRANCH" --depth 1 "$AUTH_URL" "$MEMORY_DIR" 2>&1
-        echo "Cloned repo-memory branch to $MEMORY_DIR"
-      else
-        mkdir -p "$MEMORY_DIR"
-        echo "No repo-memory branch found yet. Created empty directory."
-      fi
-
   - name: Select goal issue
     env:
       GITHUB_TOKEN: ${{ github.token }}
@@ -189,6 +171,9 @@ sections directly.
 | Status | active |
 | Last Run | - |
 | Run Count | 0 |
+| Pending Tree | - |
+| Pending Run | - |
+| Verified Head | - |
 | Completed | false |
 | Completed Reason | - |
 | Blocked | false |
@@ -214,6 +199,10 @@ sections directly.
 Read the state file, the issue body, and all non-bot comments posted after the
 previous run before selecting the next checkpoint.
 
+The framework clones and uploads the authoritative memory directory at
+`/tmp/gh-aw/repo-memory/default/` before the scheduling step. Read and write
+durable state only in this directory; a separate clone is not persisted.
+
 ## Branch And PR Rules
 
 Each issue has exactly one canonical branch and one draft PR.
@@ -222,29 +211,23 @@ The branch name is always exactly the scheduler-provided `selected.branch`.
 Never add suffixes, hashes, run IDs, timestamps, or random tokens. Never let the
 framework auto-generate a branch name.
 
-Synchronize the branch before making changes. Use the repository default branch
-in place of `<default>` below:
+Synchronize the branch locally before making changes. Read `selected.branch`
+into `branch`, determine `default_branch` from repository metadata, then run:
 
 ```bash
-git fetch origin <default>
-if git ls-remote --exit-code origin <branch>; then
-  git fetch origin <branch>
-  ahead=$(git rev-list --count origin/<default>..origin/<branch>)
-  behind=$(git rev-list --count origin/<branch>..origin/<default>)
-
-  if [ "$ahead" = "0" ] && [ "$behind" != "0" ]; then
-    git checkout -B <branch> origin/<default>
-    git push --force-with-lease origin <branch>
-  elif [ "$ahead" != "0" ] && [ "$behind" != "0" ]; then
-    git checkout -B <branch> origin/<branch>
-    git merge origin/<default> --no-edit -m "Merge <default> into <branch>"
-  else
-    git checkout -B <branch> origin/<branch>
-  fi
-else
-  git checkout -b <branch> origin/<default>
-fi
+bash .github/workflows/scripts/sync_automation_branch.sh "$branch" "$default_branch"
 ```
+
+This preserves remote history and merges the base without rewriting existing
+commits. Stop on conflicts and record the focused repair needed. Never rebase,
+force-push, or run `git push` from the agent. Publish through exactly one
+`push-to-pull-request-branch` request for an existing PR, or one
+`create-pull-request` request when no canonical open PR exists.
+
+Safe outputs publish only after the agent ends. Record the candidate tree and
+local evidence as pending, then verify the remote tree and required CI on a
+later run. Do not mark a goal completed or report changes as published while
+its required publication or CI evidence is still pending.
 
 Create or update the PR:
 
@@ -255,20 +238,52 @@ Create or update the PR:
   workflow. Each run may add commits to the same branch.`
 - If `selected.existing_pr` is not null, update that PR. Do not create another.
 
+## Reconcile Pending Publication
+
+Before selecting another checkpoint, inspect `Pending Tree` in the authoritative
+state file. When it is present, fetch `selected.branch` and resolve its remote
+head SHA and tree. Do not overwrite pending evidence with a new checkpoint.
+
+- If the remote tree differs, inspect `Pending Run` safe-output results. Recover
+  or retry a failed publication from its artifacts if possible; otherwise report
+  the failed checkpoint and the focused action needed. If another actor changed
+  the branch, evaluate that new head before replacing pending evidence. Never
+  claim the prior checkpoint landed or completed from local evidence alone.
+- If the tree matches, query `gh run list --workflow CI --commit "$sha" --limit
+  100 --json databaseId,headSha,createdAt,status,conclusion`. Pass the response to
+  `python3 .github/workflows/scripts/automation_ci.py select "$sha"`. For its
+  selected run, get `gh run view "$run_id" --json headSha,status,conclusion,jobs`
+  and pass it to the helper's `status` mode. Also get `gh pr view "$pr" --json
+  headRefOid,statusCheckRollup` and pass it to `pr-status` mode. Use the actual
+  canonical PR and fetched SHA, quote arguments, and stop on any command error.
+- Both helper results must be `success`. Missing runs and pending checks mean
+  keep the pending fields and yield. Failing checks permit only a focused repair
+  of the pending checkpoint, followed by another publication request. Do not
+  replace it with unrelated work or mark the goal complete.
+- Immediately before acceptance, re-read the branch, newest CI run, and PR
+  rollup. If the head or selected run changed, or any required gate is no longer
+  successful, defer. Otherwise record `Verified Head` and CI evidence, clear the
+  pending fields, and evaluate the completion contract. End this run after
+  reconciliation; choose any new checkpoint on a later run.
+
 ## Run Loop
 
 For the selected goal:
 
 1. Read `AGENTS.md` or other repository instructions.
 2. Read the goal issue body and new human comments.
-3. Read the repo-memory state file.
+3. Read the repo-memory state file. Reconcile any pending publication using
+   the preceding section and end this run before selecting another checkpoint.
 4. Choose the smallest useful checkpoint that advances the completion contract.
 5. Make changes on the canonical branch only when they are necessary.
 6. Run the verification evidence that is relevant to the checkpoint. If full
    verification is too expensive for this run, run the narrow check first and
    explain exactly what remains.
-7. Commit and push meaningful changes to the canonical branch.
-8. Create or update the single draft PR.
+7. Commit meaningful changes to the canonical branch locally.
+8. Record `Pending Tree` (`git rev-parse HEAD^{tree}`) and `Pending Run`, then
+   request the appropriate safe output for the single draft PR. Publication and
+   CI remain pending until verified on a later run. Do not overwrite or clear
+   these fields merely because the safe-output request was accepted.
 9. Update the state file.
 10. Post a new per-run comment on the goal issue.
 11. Update the status comment marked `<!-- GOAL:STATUS -->`.

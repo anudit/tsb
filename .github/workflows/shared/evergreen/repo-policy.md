@@ -102,18 +102,22 @@ readiness controller and the agentic orchestrator must both respect this file.
 
 - Workflows/checks Evergreen may rerun: the `CI` workflow run for the current
   head SHA (via `gh run rerun --failed`, falling back to a full rerun).
-- Workflows/checks Evergreen may dispatch: none by name in v1; activation is
-  rerun-based only.
+- Workflows/checks Evergreen may dispatch: the deterministic preflight may
+  dispatch `ci.yml` when no CI run exists for the unchanged head of a same-repo
+  PR. The agent may not directly dispatch workflows.
 - Stale check policy: reactivate the latest `CI` run for the head SHA once per
   head; never rerun green checks; never re-trigger an already in-progress run.
-- Missing check policy: if no `CI` run exists for the head SHA, wait for the
-  normal `pull_request`/schedule CI to start rather than forcing activation.
+- Missing check policy: preflight rechecks the PR head and same-repository
+  ownership, dispatches `ci.yml` using the existing CI-trigger token, and waits
+  for the resulting checks. API read failures are blocked, not missing runs.
 - Empty commit policy: empty trigger commits are a last resort only, requested
   through safe outputs by the agent (never from preflight) and labeled
   `evergreen: trigger CI`; they do not count as semantic repair attempts.
 - Token policy: `GITHUB_TOKEN` for reads and control-plane label writes.
-  `GH_AW_CI_TRIGGER_TOKEN` (existing PAT) is used only for CI reruns and
-  safe-output pushes so default-token limitations do not block CI.
+  `GH_AW_CI_TRIGGER_TOKEN` (existing PAT) is used for deterministic CI reruns,
+  missing-CI dispatch, same-repository branch updates, and safe-output pushes
+  so default-token limitations do not block CI. If it is unavailable, preflight
+  blocks the write rather than falling back to the default token.
 
 ## Repair Policy
 

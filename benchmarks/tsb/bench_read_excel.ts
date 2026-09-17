@@ -2,7 +2,7 @@
  * Benchmark: readExcel / xlsxSheetNames — parse a 10k-row XLSX file.
  * Outputs JSON: {"function": "read_excel", "mean_ms": ..., "iterations": ..., "total_ms": ...}
  */
-import { readExcel, xlsxSheetNames } from "../../src/index.ts";
+import { readExcel, xlsxSheetNames } from "../../src/io/read_excel.ts";
 
 // ─── minimal XLSX builder (adapted from tests/io/read_excel.test.ts) ──────────
 
