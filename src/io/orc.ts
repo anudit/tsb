@@ -889,7 +889,14 @@ function inferOrcKind(values: readonly Scalar[]): number {
       return KIND_LONG;
     }
     if (typeof v === "number") {
-      return Number.isInteger(v) ? KIND_LONG : KIND_DOUBLE;
+      return values.every(
+        (value) =>
+          value === null ||
+          value === undefined ||
+          (typeof value === "number" && Number.isSafeInteger(value)),
+      )
+        ? KIND_LONG
+        : KIND_DOUBLE;
     }
     if (typeof v === "string") {
       return KIND_STRING;
@@ -1179,7 +1186,7 @@ export function readOrc(data: Uint8Array | ArrayBuffer, options: ReadOrcOptions 
           // Integer types: BOOLEAN, BYTE, SHORT, INT, LONG, DATE
           const decoded = decodeIntCol(buf, dataOff, dataLen, presentFlags, nRows);
           for (const v of decoded) {
-            vals.push(typeKind === KIND_DATE ? Number(v ?? 0) : Number(v ?? 0));
+            vals.push(v === null ? null : Number(v));
           }
           break;
         }

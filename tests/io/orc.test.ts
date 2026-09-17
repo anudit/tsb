@@ -104,6 +104,20 @@ describe("readOrc / toOrc — float columns", () => {
     expect(vals[2]).toBeCloseTo(3.75);
   });
 
+  it("retains fractional values after an integer first value", () => {
+    expect(colArr(roundtrip(DataFrame.fromColumns({ x: [1, 2.5, null, 3.25] })), "x")).toEqual([
+      1,
+      2.5,
+      null,
+      3.25,
+    ]);
+  });
+
+  it("stores values outside the safe integer range as doubles", () => {
+    const values = [18446744073709552000, -1e100, Number.MAX_VALUE];
+    expect(colArr(roundtrip(DataFrame.fromColumns({ x: values })), "x")).toEqual(values);
+  });
+
   it("round-trips negative floats", () => {
     const df = DataFrame.fromColumns({ x: [-1.5, -0.001, 0.0] });
     const rt = roundtrip(df);
