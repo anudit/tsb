@@ -5,6 +5,186 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tsb · ORC Format I/O</title>
     <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --accent: #58a6ff;
+      --green: #3fb950;
+      --orange: #d29922;
+      --red: #f85149;
+      --font-mono: "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    a { color: var(--accent); }
+    h1 { color: var(--accent); margin-bottom: 0.5rem; }
+    h2 { margin-top: 0; margin-bottom: 0.5rem; font-size: 1.25rem; }
+    p { color: #8b949e; margin-bottom: 1rem; }
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.3rem;
+      padding: 0.1rem 0.4rem;
+    }
+    .back { margin-bottom: 2rem; display: inline-block; }
+
+    /* ── Loading overlay ──────────────────────────────── */
+    #playground-loading {
+      position: fixed;
+      inset: 0;
+      background: rgba(13, 17, 23, 0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      gap: 1rem;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #playground-status { color: #8b949e; font-size: 0.95rem; }
+
+    /* ── Section cards ────────────────────────────────── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section p { margin-bottom: 0.75rem; }
+
+    /* ── Playground block ─────────────────────────────── */
+    .playground-block {
+      margin-top: 0.75rem;
+    }
+    .playground-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #1c2128;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 0.5rem 0.5rem 0 0;
+      padding: 0.4rem 0.75rem;
+    }
+    .playground-label {
+      font-size: 0.75rem;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .playground-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .playground-actions button {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--border);
+      border-radius: 0.35rem;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: system-ui, sans-serif;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .playground-actions button:hover:not(:disabled) {
+      background: rgba(88, 166, 255, 0.1);
+      border-color: var(--accent);
+    }
+    .playground-actions button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .playground-run { font-weight: 600; }
+
+    /* ── Editor textarea ──────────────────────────────── */
+    .playground-editor {
+      display: block;
+      width: 100%;
+      min-height: 80px;
+      background: #0d1117;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-bottom: none;
+      padding: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      line-height: 1.55;
+      resize: vertical;
+      outline: none;
+      tab-size: 2;
+      white-space: pre;
+      overflow-x: auto;
+    }
+    .playground-editor:focus {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent);
+    }
+
+    /* ── Output area ──────────────────────────────────── */
+    .playground-output {
+      background: #1c2333;
+      border: 1px solid var(--border);
+      border-radius: 0 0 0.5rem 0.5rem;
+      padding: 0.75rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      color: #8b949e;
+      white-space: pre-wrap;
+      min-height: 2rem;
+      word-break: break-word;
+    }
+    .playground-output.active {
+      color: var(--green);
+      border-color: var(--green);
+    }
+    .playground-output.error {
+      color: var(--red);
+      border-color: var(--red);
+    }
+    .playground-hint {
+      font-size: 0.75rem;
+      color: #484f58;
+      margin-top: 0.35rem;
+      text-align: right;
+    }
+
+    /* ── Footer ───────────────────────────────────────── */
+    footer {
+      text-align: center;
+      padding: 2rem 0;
+      color: #8b949e;
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+      margin-top: 2rem;
+    }
+
+    /* ── API table ────────────────────────────────────── */
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid var(--border); padding: 0.5rem 1rem; text-align: left; }
+    th { background: var(--surface); color: var(--accent); }
+
       body {
         font-family: system-ui, sans-serif;
         max-width: 900px;
@@ -69,7 +249,7 @@
       a { color: #58a6ff; }
     </style>
   </head>
-  <body>
+  <body><div id="playground-loading"><div class="spinner"></div><p id="playground-status">Loading tsb…</p></div>
     <p><a href="index.html">← tsb playground</a></p>
     <h1>ORC Format I/O</h1>
     <p>
@@ -89,7 +269,11 @@
 
     <h2>1 — Write &amp; read a DataFrame</h2>
     <p>Create a DataFrame, serialize it to ORC bytes, then parse it back:</p>
-    <pre><code id="ex1-code">import { DataFrame, readOrc, toOrc } from "tsb";
+    <div class="playground-block">
+  <div class="playground-header"><span class="playground-label">TypeScript</span>
+    <div class="playground-actions"><button class="playground-run" disabled>▶ Run</button><button class="playground-reset">↺ Reset</button></div>
+  </div>
+  <textarea class="playground-editor" spellcheck="false">import { DataFrame, readOrc, toOrc } from "tsb";
 
 const df = DataFrame.fromColumns({
   id:     [1, 2, 3, 4, 5],
@@ -104,13 +288,18 @@ console.log("ORC buffer size:", buf.length, "bytes");
 
 // Parse back
 const df2 = readOrc(buf);
-console.log(df2.toString());</code></pre>
-    <button onclick="runEx1()">▶ Run</button>
-    <div class="output" id="ex1-out">Click "Run" to execute…</div>
+console.log(df2.toString());</textarea>
+  <div class="playground-output">Click ▶ Run to execute</div>
+  <div class="playground-hint">Ctrl+Enter to run · Tab to indent</div>
+</div>
 
     <h2>2 — Nullable columns</h2>
     <p>ORC natively supports null values via PRESENT streams:</p>
-    <pre><code id="ex2-code">import { DataFrame, readOrc, toOrc } from "tsb";
+    <div class="playground-block">
+  <div class="playground-header"><span class="playground-label">TypeScript</span>
+    <div class="playground-actions"><button class="playground-run" disabled>▶ Run</button><button class="playground-reset">↺ Reset</button></div>
+  </div>
+  <textarea class="playground-editor" spellcheck="false">import { DataFrame, readOrc, toOrc } from "tsb";
 
 const df = DataFrame.fromColumns({
   x:    [1, null, 3, null, 5],
@@ -120,13 +309,18 @@ const df = DataFrame.fromColumns({
 const buf = toOrc(df);
 const rt = readOrc(buf);
 console.log("x values:", rt.col("x").values.join(", "));
-console.log("name values:", rt.col("name").values.join(", "));</code></pre>
-    <button onclick="runEx2()">▶ Run</button>
-    <div class="output" id="ex2-out">Click "Run" to execute…</div>
+console.log("name values:", rt.col("name").values.join(", "));</textarea>
+  <div class="playground-output">Click ▶ Run to execute</div>
+  <div class="playground-hint">Ctrl+Enter to run · Tab to indent</div>
+</div>
 
     <h2>3 — Column selection</h2>
     <p>Use the <code>columns</code> option to read only a subset of columns:</p>
-    <pre><code id="ex3-code">import { DataFrame, readOrc, toOrc } from "tsb";
+    <div class="playground-block">
+  <div class="playground-header"><span class="playground-label">TypeScript</span>
+    <div class="playground-actions"><button class="playground-run" disabled>▶ Run</button><button class="playground-reset">↺ Reset</button></div>
+  </div>
+  <textarea class="playground-editor" spellcheck="false">import { DataFrame, readOrc, toOrc } from "tsb";
 
 const df = DataFrame.fromColumns({
   a: [1, 2, 3],
@@ -139,20 +333,25 @@ const buf = toOrc(df);
 
 // Only read columns a and c
 const partial = readOrc(buf, { columns: ["a", "c"] });
-console.log("columns:", partial.columns.toArray().join(", "));
+console.log("columns:", [...partial.columns.values].join(", "));
 console.log("a:", partial.col("a").values.join(", "));
-console.log("c:", partial.col("c").values.join(", "));</code></pre>
-    <button onclick="runEx3()">▶ Run</button>
-    <div class="output" id="ex3-out">Click "Run" to execute…</div>
+console.log("c:", partial.col("c").values.join(", "));</textarea>
+  <div class="playground-output">Click ▶ Run to execute</div>
+  <div class="playground-hint">Ctrl+Enter to run · Tab to indent</div>
+</div>
 
     <h2>4 — Large dataset benchmark</h2>
     <p>Serialize and parse a 10 000-row DataFrame to measure throughput:</p>
-    <pre><code id="ex4-code">import { DataFrame, readOrc, toOrc } from "tsb";
+    <div class="playground-block">
+  <div class="playground-header"><span class="playground-label">TypeScript</span>
+    <div class="playground-actions"><button class="playground-run" disabled>▶ Run</button><button class="playground-reset">↺ Reset</button></div>
+  </div>
+  <textarea class="playground-editor" spellcheck="false">import { DataFrame, readOrc, toOrc } from "tsb";
 
 const N = 10_000;
-const ids    = Array.from({ length: N }, (_, i) => i);
-const names  = Array.from({ length: N }, (_, i) => `user_${i}`);
-const scores = Array.from({ length: N }, () => Math.random() * 100);
+const ids    = Array.from({ length: N }, (_, i) =&gt; i);
+const names  = Array.from({ length: N }, (_, i) =&gt; `user_${i}`);
+const scores = Array.from({ length: N }, () =&gt; Math.random() * 100);
 
 const df = DataFrame.fromColumns({ id: ids, name: names, score: scores });
 
@@ -165,43 +364,11 @@ const t2 = performance.now();
 console.log(`Rows: ${df2.height}, Columns: ${df2.width}`);
 console.log(`ORC size: ${buf.length.toLocaleString()} bytes`);
 console.log(`Write: ${(t1 - t0).toFixed(1)} ms`);
-console.log(`Read:  ${(t2 - t1).toFixed(1)} ms`);</code></pre>
-    <button onclick="runEx4()">▶ Run</button>
-    <div class="output" id="ex4-out">Click "Run" to execute…</div>
+console.log(`Read:  ${(t2 - t1).toFixed(1)} ms`);</textarea>
+  <div class="playground-output">Click ▶ Run to execute</div>
+  <div class="playground-hint">Ctrl+Enter to run · Tab to indent</div>
+</div>
 
-    <script type="module">
-      // Dynamic import of tsb from the built bundle
-      async function loadTsb() {
-        try {
-          return await import("../dist/index.js");
-        } catch {
-          // Fallback: try ESM via Bun dev server
-          return await import("/src/index.ts");
-        }
-      }
-
-      async function runExample(code, outId) {
-        const out = document.getElementById(outId);
-        out.textContent = "Running…";
-        try {
-          const tsb = await loadTsb();
-          const lines = [];
-          const fakeConsole = { log: (...args) => lines.push(args.map(String).join(" ")) };
-          const fn = new Function("tsb", "console", `
-            const { DataFrame, readOrc, toOrc } = tsb;
-            ${code}
-          `);
-          fn(tsb, fakeConsole);
-          out.textContent = lines.join("\n");
-        } catch (e) {
-          out.textContent = "Error: " + e.message;
-        }
-      }
-
-      window.runEx1 = () => runExample(document.getElementById("ex1-code").textContent, "ex1-out");
-      window.runEx2 = () => runExample(document.getElementById("ex2-code").textContent, "ex2-out");
-      window.runEx3 = () => runExample(document.getElementById("ex3-code").textContent, "ex3-out");
-      window.runEx4 = () => runExample(document.getElementById("ex4-code").textContent, "ex4-out");
-    </script>
+    <script src="playground-runtime.js"></script>
   </body>
 </html>

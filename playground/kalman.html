@@ -409,68 +409,6 @@ console.log("Log-likelihood:", result.logLikelihood.toFixed(4));
   </p>
 </div>
 
-<script type="module">
-  let tsbModule = null;
-
-  async function loadTsb() {
-    try {
-      tsbModule = await import("./dist/index.js");
-    } catch {
-      tsbModule = {};
-    }
-    document.getElementById("playground-loading").style.display = "none";
-    document.querySelectorAll(".playground-run").forEach(btn => {
-      btn.disabled = false;
-    });
-  }
-  loadTsb();
-
-  function runCode(editor, outputEl) {
-    const code = editor.value;
-    outputEl.className = "playground-output";
-    outputEl.textContent = "";
-
-    const logs = [];
-    const origLog = console.log;
-    console.log = (...args) => {
-      logs.push(args.map(a => (typeof a === "object" ? JSON.stringify(a) : String(a))).join(" "));
-    };
-
-    try {
-      const modifiedCode = code.replace(
-        /import\s*\{([^}]*)\}\s*from\s*["']tsb["']/g,
-        (_, names) => {
-          const parts = names.split(",").map(n => n.trim()).filter(Boolean);
-          return parts.map(n => `const ${n} = tsbModule["${n}"];`).join("\n");
-        }
-      );
-      // eslint-disable-next-line no-new-func
-      const fn = new Function("tsbModule", modifiedCode);
-      const result = fn(tsbModule);
-      if (result instanceof Promise) result.catch(e => { outputEl.className += " error"; outputEl.textContent += "\n" + String(e); });
-    } catch (e) {
-      outputEl.className += " error";
-      logs.push(String(e));
-    } finally {
-      console.log = origLog;
-    }
-    outputEl.textContent = logs.join("\n") || "(no output)";
-  }
-
-  document.querySelectorAll(".playground-block").forEach(block => {
-    const editor = block.querySelector(".playground-editor");
-    const output = block.querySelector(".playground-output");
-    const runBtn = block.querySelector(".playground-run");
-    const resetBtn = block.querySelector(".playground-reset");
-    const original = editor.value;
-
-    runBtn.addEventListener("click", () => runCode(editor, output));
-    resetBtn.addEventListener("click", () => { editor.value = original; output.textContent = "Click ▶ Run to execute"; output.className = "playground-output"; });
-    editor.addEventListener("keydown", e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runCode(editor, output); }
-      if (e.key === "Tab") { e.preventDefault(); const s = editor.selectionStart; editor.value = editor.value.slice(0, s) + "  " + editor.value.slice(editor.selectionEnd); editor.selectionStart = editor.selectionEnd = s + 2; }
-    });
-  });
-</script>
+<script src="playground-runtime.js"></script>
 </body>
 </html>
