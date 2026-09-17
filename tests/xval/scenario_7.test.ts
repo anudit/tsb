@@ -37,6 +37,17 @@ import { assertMatchesSnapshotStrict } from "./strict_compare.ts";
 const SNAPSHOT_PATH = join(import.meta.dir, "..", "..", "golden", "snapshots", "scenario_7.json");
 
 /**
+ * Type guard narrowing an `object` to have all of the given own/inherited
+ * property keys, without an `as Record<string, unknown>` cast.
+ */
+function hasProperties<K extends string>(
+  value: object,
+  keys: readonly K[],
+): value is Record<K, unknown> {
+  return keys.every((key) => key in value);
+}
+
+/**
  * Structural check that the parsed JSON has the shape of a `ScenarioSnapshot`
  * before it is used as one, avoiding an unchecked `as ScenarioSnapshot` cast
  * on `JSON.parse`'s `unknown` output.
@@ -45,20 +56,31 @@ function isScenarioSnapshotShape(value: unknown): value is ScenarioSnapshot {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const record = value as Record<string, unknown>;
+  const requiredKeys = [
+    "snapshotVersion",
+    "scenario",
+    "title",
+    "pandasVersion",
+    "numpyVersion",
+    "steps",
+  ] as const;
+  if (!hasProperties(value, requiredKeys)) {
+    return false;
+  }
   return (
-    typeof record["snapshotVersion"] === "number" &&
-    typeof record["scenario"] === "string" &&
-    typeof record["title"] === "string" &&
-    typeof record["pandasVersion"] === "string" &&
-    typeof record["numpyVersion"] === "string" &&
-    Array.isArray(record["steps"]) &&
-    record["steps"].every(
-      (step) =>
+    typeof value.snapshotVersion === "number" &&
+    typeof value.scenario === "string" &&
+    typeof value.title === "string" &&
+    typeof value.pandasVersion === "string" &&
+    typeof value.numpyVersion === "string" &&
+    Array.isArray(value.steps) &&
+    value.steps.every(
+      (step: unknown) =>
         typeof step === "object" &&
         step !== null &&
-        typeof (step as Record<string, unknown>)["step"] === "number" &&
-        typeof (step as Record<string, unknown>)["kind"] === "string",
+        hasProperties(step, ["step", "kind"]) &&
+        typeof step.step === "number" &&
+        typeof step.kind === "string",
     )
   );
 }
@@ -238,5 +260,37 @@ describe("scenario_7: comparator regression — Series shape mismatch must be re
     // Control: the same actual Series with the correct declared shape passes.
     const stepWithCorrectShape: SnapshotStep = { ...stepWithWrongShape, shape: [5] };
     expect(() => assertMatchesSnapshotStrict(actual, stepWithCorrectShape)).not.toThrow();
+  });
+});
+
+describe("scenario_7: comparator regression — bigint/duration must not be coerced into a plain number", () => {
+  const numericStep: SnapshotStep = {
+    step: 9003,
+    kind: "series",
+    operation: "nonmissing value regression",
+    shape: [1],
+    dtype: "integer",
+    name: { kind: "NaN" },
+    index: { kind: "index", dtype: "string", name: null, values: ["x"] },
+    data: [9007199254740992],
+  };
+
+  it("does not round a different bigint into the expected number", () => {
+    // 9007199254740993n is exactly one past Number.MAX_SAFE_INTEGER, which
+    // rounds to 9007199254740992 (the snapshot's expected value) if coerced
+    // through `Number(...)`. Coercion would erase that one-off difference
+    // before the tolerance check runs; tagging bigints instead of coercing
+    // them keeps this a genuine mismatch.
+    const actual = new Series<Scalar>({ data: [9007199254740993n], index: ["x"] });
+    expect(() => assertMatchesSnapshotStrict(actual, numericStep)).toThrow();
+  });
+
+  it("does not turn a duration object into a numeric value", () => {
+    // A TimedeltaLike ({ totalMs: 1 }) is a structurally distinct value from
+    // the plain number `1`; collapsing it to `value.totalMs` before
+    // comparison would wrongly accept it as a match.
+    const actual = new Series<Scalar>({ data: [{ totalMs: 1 }], index: ["x"] });
+    const stepExpectingOne: SnapshotStep = { ...numericStep, data: [1] };
+    expect(() => assertMatchesSnapshotStrict(actual, stepExpectingOne)).toThrow();
   });
 });
