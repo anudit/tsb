@@ -342,7 +342,8 @@ export class ARIMAModel {
       maCoeffs = [];
     } else {
       // ── Step 1: Yule-Walker AR(kMax) for proxy residuals ──────────────────
-      const kMax = Math.min(Math.max(p + q + 5, 3), Math.floor(m / 5));
+      // Pure AR models need no proxy residuals and should use every available lagged observation.
+      const kMax = q === 0 ? 0 : Math.min(Math.max(p + q + 5, 3), Math.floor(m / 5));
       const { ar: arHat } = kMax > 0 ? yuleWalkerAR(w, kMax) : { ar: [] as readonly number[] };
 
       // Proxy residuals: ε̂ₜ = wₜ - Σ arHat_j wₜ₋ⱼ

@@ -70,9 +70,11 @@ describe("fit – AR(1)", () => {
     expect(arCoeffs.length).toBe(1);
   });
 
-  it("AR(1) coefficient close to true phi=0.7", () => {
-    const { arCoeffs } = new ARIMAModel({ p: 1, d: 0, q: 0 }).fit(y);
-    expect(arCoeffs[0]).toBeCloseTo(0.7, 1);
+  it("AR(1) uses every available lagged observation and matches OLS", () => {
+    const { arCoeffs, intercept } = new ARIMAModel({ p: 1, d: 0, q: 0 }).fit(y);
+    // statsmodels 0.15.0: OLS(y[1:], add_constant(y[:-1])).fit().params.
+    expect(arCoeffs[0]).toBeCloseTo(0.6746405572472494, 10);
+    expect(intercept).toBeCloseTo(-0.00022833154176704845, 10);
   });
 
   it("fittedValues length equals series length", () => {
