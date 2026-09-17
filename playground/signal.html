@@ -449,7 +449,7 @@ except ImportError:
 n = 256
 x = np.sin(2 * np.pi * 10 * np.arange(n) / n)
 
-_, Zxx = signal.stft(x, nperseg=64, noverlap=32)
+_, _, Zxx = signal.stft(x, nperseg=64, noverlap=32)
 _, x_back = signal.istft(Zxx, nperseg=64, noverlap=32)
 
 err = np.max(np.abs(x[64:n-64] - x_back[64:n-64]))
