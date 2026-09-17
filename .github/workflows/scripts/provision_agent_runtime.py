@@ -20,7 +20,8 @@ DEFAULT_OUTPUT = Path("/tmp/gh-aw/agent-runtime.json")
 
 def output(command, root):
     return subprocess.run(command, cwd=root, check=True, capture_output=True,
-                          text=True, timeout=30).stdout.strip()
+                          text=True, timeout=30,
+                          env={**os.environ, "PYTHONNOUSERSITE": "1"}).stdout.strip()
 
 
 def dependency_fingerprint(root):
@@ -32,7 +33,9 @@ def dependency_fingerprint(root):
 
 
 def python_versions(executable, root):
-    return json.loads(output([executable, "-c",
+    # Isolated mode excludes repository modules as well as user-site packages.
+    # These probes inspect the tool installation, never candidate Python code.
+    return json.loads(output([executable, "-I", "-c",
         "import json,platform,pandas,numpy; print(json.dumps({'python':platform.python_version(),"
         "'pandas':pandas.__version__,'numpy':numpy.__version__}))"], root))
 
@@ -51,7 +54,7 @@ def verify_tools(python, bun, root):
 
 def prepare(root, previous):
     python = sys.executable
-    version = output([python, "-c", "import platform; print(platform.python_version())"], root)
+    version = output([python, "-I", "-c", "import platform; print(platform.python_version())"], root)
     if not version.startswith("3.12."):
         raise ValueError("Runtime setup must provide Python 3.12 before provisioning")
     source_bun = shutil.which("bun")
@@ -78,9 +81,10 @@ def prepare(root, previous):
     except (subprocess.SubprocessError, ValueError, OSError):
         versions = {}
     if versions.get("pandas") != PANDAS_VERSION or versions.get("numpy") != NUMPY_VERSION:
-        subprocess.run([python, "-m", "pip", "install", "--disable-pip-version-check", "--only-binary=:all:",
+        subprocess.run([python, "-I", "-m", "pip", "install", "--no-user", "--disable-pip-version-check", "--only-binary=:all:",
                         "pandas==" + PANDAS_VERSION, "numpy==" + NUMPY_VERSION],
-                       cwd=root, check=True, timeout=600)
+                       cwd=root, check=True, timeout=600,
+                       env={**os.environ, "PYTHONNOUSERSITE": "1"})
     versions = verify_tools(python, str(bun), root)
     if dependency_fingerprint(root) != fingerprint:
         raise ValueError("Dependency setup modified the candidate manifest/lock")
@@ -88,6 +92,27 @@ def prepare(root, previous):
             "versions": versions, "dependency_fingerprint": fingerprint,
             "dependencies_reinstalled": reinstall,
             "head_sha": output(["git", "rev-parse", "HEAD"], root)}
+
+
+def environment_exports(report):
+    return ("export PATH=" + shlex.quote(str(Path(report["bun_executable"]).parent)) + ":" +
+            shlex.quote(str(Path(report["python_executable"]).parent)) + ':"$PATH"\n' +
+            "export PYTHONNOUSERSITE=1\n")
+
+
+def stage_runtime(actions_dir, selection, report):
+    """Stage startup authority where gh-aw mounts it read-only in the sandbox."""
+    if not actions_dir.is_absolute():
+        raise ValueError("The trusted actions directory must be absolute")
+    actions_dir.mkdir(parents=True, exist_ok=True)
+    source = Path(__file__).resolve()
+    shutil.copy2(source, actions_dir / "tsb_provision_agent_runtime.py")
+    shutil.copy2(source.with_name("tsb_runtime_harness.cjs"), actions_dir / "tsb_runtime_harness.cjs")
+    (actions_dir / "tsb_agent_runtime_selection.json").write_text(json.dumps(selection, indent=2) + "\n")
+    (actions_dir / "tsb_agent_runtime_manifest.json").write_text(
+        json.dumps({"schema_version": 1, **report}, indent=2) + "\n")
+    if report["status"] == "ready":
+        (actions_dir / "tsb_agent_runtime_env.sh").write_text(environment_exports(report))
 
 
 def main(argv=None):
@@ -98,12 +123,15 @@ def main(argv=None):
     # branches. Its own path must never determine which candidate is checked.
     parser.add_argument("--repo-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--stage-actions-dir", type=Path)
     args = parser.parse_args(argv)
     try:
         previous = json.loads(args.output.read_text()) if args.output.exists() else {}
         if not isinstance(previous, dict):
             raise ValueError("Invalid prior runtime evidence")
         if args.check_only:
+            if args.stage_actions_dir:
+                raise ValueError("Only host provisioning may stage trusted startup files")
             if previous.get("status") != "ready":
                 raise ValueError("No successful runtime provisioning evidence exists")
             versions = verify_tools(previous["python_executable"], previous["bun_executable"], args.repo_root)
@@ -124,10 +152,10 @@ def main(argv=None):
             report = {"status": "skipped", "reason": "No selected work; dependency setup skipped"}
         else:
             report = prepare(args.repo_root, previous)
-            env = "export PATH=" + shlex.quote(str(Path(report["bun_executable"]).parent)) + ":" + \
-                  shlex.quote(str(Path(report["python_executable"]).parent)) + ':"$PATH"\n'
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            args.output.with_suffix(".env").write_text(env)
+            args.output.with_suffix(".env").write_text(environment_exports(report))
+        if args.stage_actions_dir:
+            stage_runtime(args.stage_actions_dir, selection, report)
         code = 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         report = {"status": "setup_error", "error": str(error)}

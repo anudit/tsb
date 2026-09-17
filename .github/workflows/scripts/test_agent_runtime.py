@@ -103,6 +103,9 @@ class AgentRuntimeTest(unittest.TestCase):
             self.assertEqual(install.call_count, 2)
             self.assertEqual(install.call_args.args[0][-2:], ["pandas==2.2.3", "numpy==2.1.3"])
             self.assertIn("--only-binary=:all:", install.call_args.args[0])
+            self.assertIn("--no-user", install.call_args.args[0])
+            self.assertEqual(install.call_args.args[0][1:4], ["-I", "-m", "pip"])
+            self.assertEqual(install.call_args.kwargs["env"]["PYTHONNOUSERSITE"], "1")
 
     def test_sandbox_check_uses_recorded_paths_and_rejects_new_branch_lock(self):
         for changed in (False, True):
@@ -130,7 +133,8 @@ class AgentRuntimeTest(unittest.TestCase):
                 self.assertEqual(runtime.main(["--selection", str(selected), "--output", str(result), "--repo-root", str(root)]), 0)
             self.assertEqual(json.loads(result.read_text()), report)
             self.assertEqual(result.with_suffix(".env").read_text(),
-                             'export PATH=\'/tool cache/bun/bin\':\'/tool cache/python/bin\':"$PATH"\n')
+                             'export PATH=\'/tool cache/bun/bin\':\'/tool cache/python/bin\':"$PATH"\n'
+                             'export PYTHONNOUSERSITE=1\n')
 
     def test_staged_helper_survives_missing_or_hostile_branch_copy(self):
         for branch_copy in (None, 'raise RuntimeError("branch helper must not execute")\n'):
@@ -210,6 +214,43 @@ class AgentRuntimeTest(unittest.TestCase):
             self.assertFalse((root / ".github").exists())
             self.assertEqual(json.loads(evidence.read_text())["dependency_fingerprint"], trusted.dependency_fingerprint(root))
 
+    def test_host_stages_trusted_manifest_selection_helper_and_wrapper(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            selected, result, actions = root / "selection.json", root / "runtime.json", root / "actions"
+            selection = {"selected": {"number": 42}}
+            selected.write_text(json.dumps(selection))
+            report = {"status": "ready", "python_executable": "/pinned/python3", "bun_executable": "/pinned/bun",
+                      "versions": {**VERSIONS, "bun": "1.4.2"}}
+            with patch.object(runtime, "prepare", return_value=report):
+                self.assertEqual(runtime.main(["--selection", str(selected), "--output", str(result),
+                    "--repo-root", str(root), "--stage-actions-dir", str(actions)]), 0)
+            self.assertEqual(json.loads((actions / "tsb_agent_runtime_manifest.json").read_text()),
+                             {"schema_version": 1, **report})
+            self.assertEqual(json.loads((actions / "tsb_agent_runtime_selection.json").read_text()), selection)
+            self.assertEqual((actions / "tsb_provision_agent_runtime.py").read_text(), Path(runtime.__file__).read_text())
+            self.assertEqual((actions / "tsb_runtime_harness.cjs").read_text(),
+                             Path(runtime.__file__).with_name("tsb_runtime_harness.cjs").read_text())
+            self.assertEqual((actions / "tsb_agent_runtime_env.sh").read_text(), runtime.environment_exports(report))
+
+    def test_host_probes_cannot_read_user_site_packages(self):
+        with patch.object(runtime.subprocess, "run") as command:
+            command.return_value.stdout = json.dumps(VERSIONS)
+            self.assertEqual(runtime.python_versions("python3", Path(".")), VERSIONS)
+        self.assertEqual(command.call_args.kwargs["env"]["PYTHONNOUSERSITE"], "1")
+        self.assertEqual(command.call_args.args[0][1:3], ["-I", "-c"])
+
+    def test_null_selection_stages_wrapper_without_installing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            selected, result, actions = root / "selection.json", root / "runtime.json", root / "actions"
+            selected.write_text('{"selected":null,"unconfigured":["example"]}')
+            with patch.object(runtime, "prepare", side_effect=AssertionError("no setup")):
+                self.assertEqual(runtime.main(["--selection", str(selected), "--output", str(result),
+                    "--repo-root", str(root), "--stage-actions-dir", str(actions)]), 0)
+            self.assertEqual(json.loads((actions / "tsb_agent_runtime_manifest.json").read_text())["status"], "skipped")
+            self.assertTrue((actions / "tsb_runtime_harness.cjs").is_file())
+
     def test_workflows_pin_tools_and_provision_after_selection(self):
         workflows = Path(__file__).resolve().parents[1]
         for name in ("goal", "autoloop"):
@@ -218,16 +259,43 @@ class AgentRuntimeTest(unittest.TestCase):
                 self.assertIn("bun:\n    version: '1.4.2'", source)
                 self.assertIn("python:\n    version: '3.12'", source)
                 self.assertLess(source.index(name + "_scheduler.py"), source.index("provision_agent_runtime.py --selection"))
-                self.assertIn("--check-only", source)
-                self.assertIn("switching/synchronizing branches", source)
-                self.assertIn("cp .github/workflows/scripts/provision_agent_runtime.py /tmp/gh-aw/provision_agent_runtime.py", source)
-                self.assertIn('helper with `--check-only --repo-root "$GITHUB_WORKSPACE"`', source)
-                self.assertIn("bounded refresh-then-check sequence", source)
-                prompt = source.split("For selected work, first source", 1)[1]
+                self.assertIn(
+                    f'python3 -I .github/workflows/scripts/provision_agent_runtime.py --selection /tmp/gh-aw/{name}.json '
+                    '--repo-root "$GITHUB_WORKSPACE" --stage-actions-dir "$RUNNER_TEMP/gh-aw/actions"', source)
+                self.assertIn("engine:\n  id: copilot\n  harness:\n    use: tsb_runtime_harness.cjs", source)
+                self.assertIn("  safe_outputs:\n    if: needs.agent.result == 'success'", source)
+                prompt = source.split("Startup automatically selects and verifies pinned tools", 1)[1]
+                self.assertIn("not exact-head test results", prompt)
+                self.assertIn("switching/synchronizing branches", prompt)
+                self.assertIn("absolute pinned Python executable", prompt)
+                self.assertIn("$RUNNER_TEMP/gh-aw/actions/tsb_agent_runtime_manifest.json", prompt)
+                self.assertIn("$RUNNER_TEMP/gh-aw/actions/tsb_provision_agent_runtime.py", prompt)
+                self.assertIn('--selection "$RUNNER_TEMP/gh-aw/actions/tsb_agent_runtime_selection.json" --repo-root "$GITHUB_WORKSPACE"', prompt)
                 self.assertLess(prompt.index("--selection"), prompt.index("--check-only"))
-                self.assertIn("Never substitute the branch-owned helper", source)
-                self.assertNotIn("python3 .github/workflows/scripts/provision_agent_runtime.py", source)
-                self.assertIn("not blind\ninstaller retries", source)
+                self.assertIn("bounded refresh-then-check sequence", prompt)
+                self.assertIn("Never source a writable `.env`, substitute the branch-owned helper", prompt)
+                self.assertNotIn("/tmp/gh-aw/provision_agent_runtime.py", source)
+                self.assertNotIn("agent-runtime.env", source)
+                self.assertIn("not blind installer retries", prompt)
+
+    def test_compiled_workflows_preserve_read_only_staging_and_success_barrier(self):
+        workflows = Path(__file__).resolve().parents[1]
+        for name in ("goal", "autoloop"):
+            with self.subTest(workflow=name):
+                compiled = (workflows / (name + ".lock.yml")).read_text()
+                command = next(line for line in compiled.splitlines()
+                               if '/actions/tsb_runtime_harness.cjs"' in line)
+                self.assertLess(command.index('find "$GH_AW_TOOL_CACHE"'), command.index("tsb_runtime_harness.cjs"))
+                self.assertIn('--mount "${RUNNER_TEMP}/gh-aw:${RUNNER_TEMP}/gh-aw:ro"', compiled)
+                execution = compiled.split("        id: agentic_execution\n", 1)[1].split("        env:\n", 1)[0]
+                self.assertIn("set -o pipefail", execution)
+                self.assertIn("gh_aw_exit_code=$?", execution)
+                self.assertIn("agent_execution_exit_code.txt", execution)
+                publication = compiled.split("\n  safe_outputs:\n", 1)[1].split("    runs-on:", 1)[0]
+                self.assertIn("(needs.agent.result == 'success')", publication)
+                self.assertIn("needs.detection.result == 'success'", publication)
+                memory = compiled.split("\n  push_repo_memory:\n", 1)[1].split("    runs-on:", 1)[0]
+                self.assertIn("needs.agent.result == 'success'", memory)
 
 
 if __name__ == "__main__":
