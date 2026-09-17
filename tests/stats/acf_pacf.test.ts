@@ -113,12 +113,14 @@ describe("acf", () => {
     expect(result.acf.length).toBe(6); // lags 0..5
   });
 
-  it("linear series has high positive ACF at all lags", () => {
+  it("linear series matches finite-sample autocovariance normalization", () => {
     const x = Array.from({ length: 20 }, (_, i) => i);
     const result = acf(x, { nlags: 5 });
-    for (let k = 1; k <= 5; k++) {
-      expect(result.acf[k]).toBeGreaterThan(0.5);
-    }
+    // statsmodels 0.15.0: acf(np.arange(20), nlags=5, fft=False).
+    const expected = [
+      1, 0.85, 0.7015037593984962, 0.556015037593985, 0.4150375939849624, 0.2800751879699248,
+    ];
+    expected.forEach((value, k) => expect(result.acf[k]).toBeCloseTo(value, 12));
   });
 
   it("alternating series has negative ACF at odd lags", () => {
@@ -313,7 +315,7 @@ describe("durbinWatson", () => {
   it("returns ~4 for alternating residuals (negative autocorrelation)", () => {
     const e = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? 1 : -1));
     const dw = durbinWatson(e);
-    expect(dw).toBeGreaterThan(3.9);
+    expect(dw).toBeCloseTo((4 * (e.length - 1)) / e.length, 12);
   });
 
   it("returns 2 for all-zero residuals", () => {
@@ -473,27 +475,27 @@ describe("known values (statsmodels reference)", () => {
   //   import statsmodels.tsa.stattools as sm
   //   x = [1, 2, 3, 2, 1, 2, 3, 2, 1, 2]
   //   sm.acf(x, nlags=4, fft=False)
-  //   => [1.0, 0.3125, -0.3125, -0.5625, -0.1875]
+  //   => [1.0, -0.0020408163265305938, -0.8, -0.006122448979591823, 0.5836734693877551]
   const x = [1, 2, 3, 2, 1, 2, 3, 2, 1, 2];
 
   it("ACF matches statsmodels for x=[1,2,3,2,1,2,3,2,1,2]", () => {
     const result = acf(x, { nlags: 4 });
     expect(round(result.acf[0] ?? 0, 4)).toBe(1.0);
-    expect(round(result.acf[1] ?? 0, 4)).toBe(round(0.3125, 4));
-    expect(round(result.acf[2] ?? 0, 4)).toBe(round(-0.3125, 4));
+    expect(round(result.acf[1] ?? 0, 4)).toBe(round(-0.0020408163265305938, 4));
+    expect(round(result.acf[2] ?? 0, 4)).toBe(round(-0.8, 4));
   });
 
-  it("autocorr(x, 1) matches acf(x,nlags=1).acf[1]", () => {
+  it("Pearson autocorrelation uses separate shifted means", () => {
     const acfVal = acf(x, { nlags: 1 }).acf[1] ?? 0;
-    // autocorr uses Pearson, acf uses autocovariance — they differ slightly
-    // Both should be in the same ballpark
-    const ac = autocorr(x, 1);
-    expect(Math.sign(ac)).toBe(Math.sign(acfVal));
+    // Pearson correlation centers each shifted slice separately; ACF centers
+    // the entire original sample. Their values need not have the same sign.
+    expect(autocorr(x, 1)).toBeCloseTo(0, 12);
+    expect(acfVal).toBeCloseTo(-0.0020408163265305938, 12);
   });
 
   it("Durbin-Watson for [1,-1,1,-1,...] is close to 4", () => {
     const e = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1];
-    expect(durbinWatson(e)).toBeGreaterThan(3.9);
+    expect(durbinWatson(e)).toBeCloseTo(3.6, 12);
   });
 
   it("Ljung-Box Q for x=[1,2,3,...,10], lag=1 is finite and positive", () => {

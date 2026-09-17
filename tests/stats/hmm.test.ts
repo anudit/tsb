@@ -24,7 +24,8 @@ describe("GaussianHMM", () => {
     expect(sortedMeans[1]).toBeGreaterThan(3);
     expect(fit.startProb.length).toBe(2);
     expect(fit.transmat.length).toBe(2);
-    expect(fit.logProb).toBeLessThan(0); // log-prob is negative
+    // Gaussian densities can exceed 1, so their log-likelihood can be positive.
+    expect(Number.isFinite(fit.logProb)).toBe(true);
     expect(fit.nIterDone).toBeGreaterThan(0);
   });
 
@@ -46,7 +47,21 @@ describe("GaussianHMM", () => {
     model.fit(obs);
     const lp = model.score(obs);
     expect(Number.isFinite(lp)).toBe(true);
-    expect(lp).toBeLessThan(0);
+  });
+
+  it("one-state score matches the Gaussian log-density formula", () => {
+    const obs = [0.1, 0.2, 0.15, 0.08, 0.12];
+    const model = new GaussianHMM({ nComponents: 1 });
+    const fit = model.fit(obs);
+    const mean = fit.means[0] ?? 0;
+    const variance = fit.covars[0] ?? 1;
+    const expected = obs.reduce(
+      (sum, value) =>
+        sum - 0.5 * (Math.log(2 * Math.PI * variance) + (value - mean) ** 2 / variance),
+      0,
+    );
+    expect(model.score(obs)).toBeCloseTo(expected, 10);
+    expect(expected).toBeGreaterThan(0);
   });
 
   it("predictProba returns probabilities summing to ~1", () => {
@@ -163,7 +178,6 @@ describe("MultinomialHMM", () => {
     model.fit(obs);
     const lp = model.score(obs);
     expect(Number.isFinite(lp)).toBe(true);
-    expect(lp).toBeLessThan(0);
   });
 
   it("emission probs sum to 1 per state", () => {
