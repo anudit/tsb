@@ -17,6 +17,12 @@ on:
 
 permissions: read-all
 
+runtimes:
+  bun:
+    version: '1.4.2'
+  python:
+    version: '3.12'
+
 jobs:
   preflight:
     name: Check for Goal work without an agent
@@ -120,6 +126,8 @@ steps:
       GOAL_ISSUE: ${{ github.event.inputs.issue }}
     run: |
       python3 .github/workflows/scripts/goal_scheduler.py
+  - name: Prepare the selected goal's pinned tools
+    run: python3 .github/workflows/scripts/provision_agent_runtime.py --selection /tmp/gh-aw/goal.json
 
 source: githubnext/goal
 engine: copilot
@@ -146,6 +154,13 @@ issue number or add the `goal` label to the intended issue, then stop.
 ## Read The Scheduler Output
 
 At the start of every run, read `/tmp/gh-aw/goal.json`.
+
+For selected work, source `/tmp/gh-aw/agent-runtime.env`, then run
+`python3 .github/workflows/scripts/provision_agent_runtime.py --check-only` inside
+the sandbox. After switching/synchronizing branches, rerun it with
+`--selection /tmp/gh-aw/goal.json` to revalidate changed lock dependencies.
+Record the emitted versions/SHA; on failure report one setup blocker, not blind
+installer retries or passing evidence. A null selection needs no setup.
 
 Important fields:
 

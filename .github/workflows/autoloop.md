@@ -23,6 +23,12 @@ on:
 
 permissions: read-all
 
+runtimes:
+  bun:
+    version: '1.4.2'
+  python:
+    version: '3.12'
+
 timeout-minutes: 45
 
 network:
@@ -126,6 +132,8 @@ steps:
       AUTOLOOP_PROGRAM: ${{ github.event.inputs.program }}
     run: |
       python3 .github/workflows/scripts/autoloop_scheduler.py
+  - name: Prepare the selected program's pinned tools
+    run: python3 .github/workflows/scripts/provision_agent_runtime.py --selection /tmp/gh-aw/autoloop.json
 
 source: githubnext/autoloop
 engine: copilot
@@ -137,6 +145,13 @@ features:
 # Autoloop
 
 An iterative optimization agent that proposes changes, evaluates them against a metric, and keeps only improvements — running autonomously on a schedule.
+
+For selected work, source `/tmp/gh-aw/agent-runtime.env`, then run
+`python3 .github/workflows/scripts/provision_agent_runtime.py --check-only` inside
+the sandbox. After switching/synchronizing branches, rerun it with
+`--selection /tmp/gh-aw/autoloop.json` to revalidate changed lock dependencies.
+Record the emitted versions/SHA; on failure report one setup blocker, not blind
+installer retries or passing evidence. A null selection needs no setup.
 
 ## Objective And Evidence Guard
 
