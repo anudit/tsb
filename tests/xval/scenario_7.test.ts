@@ -56,14 +56,14 @@ function isScenarioSnapshotShape(value: unknown): value is ScenarioSnapshot {
   if (typeof value !== "object" || value === null) {
     return false;
   }
-  const requiredKeys = [
-    "snapshotVersion",
-    "scenario",
-    "title",
-    "pandasVersion",
-    "numpyVersion",
-    "steps",
-  ] as const;
+  const requiredKeys: readonly (
+    | "snapshotVersion"
+    | "scenario"
+    | "title"
+    | "pandasVersion"
+    | "numpyVersion"
+    | "steps"
+  )[] = ["snapshotVersion", "scenario", "title", "pandasVersion", "numpyVersion", "steps"];
   if (!hasProperties(value, requiredKeys)) {
     return false;
   }
