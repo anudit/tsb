@@ -6,7 +6,7 @@
 
 | Field | Value |
 |-------|-------|
-| Last Run | 2026-09-01T07:03:02Z |
+| Last Run | 2026-09-17T16:24:42Z |
 | Iteration Count | 497 |
 | Best Metric | 837 |
 | Target Metric | — |
@@ -18,7 +18,12 @@
 | Completed | false |
 | Completed Reason | — |
 | Consecutive Errors | 0 |
-| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted |
+| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, pending-ci |
+| Pending Tree | 4e220f1f5ee0d9173c105fce6c6123b609b18491 |
+| Pending Metric | 843 |
+| Pending Iteration | 498 |
+| Pending Run | https://github.com/githubnext/tsb/actions/runs/35244744750 |
+| CI Fix Attempts | 0 |
 
 
 
@@ -59,6 +64,14 @@
 - Explore remaining tsb functions not yet benchmarked (numeric_ops, where_mask, etc.).
 
 ## 📊 Iteration History
+
+### Iteration 498 — 2026-09-17T16:24:42Z — [Run](https://github.com/githubnext/tsb/actions/runs/35244744750)
+
+- **Status**: ⏳ Pending CI (publication requested)
+- **Change**: Added `bench_fit_gev` — fitGEV (GEV distribution L-moments fitting) benchmark, N=5000 Gumbel-distributed block maxima, pure-numpy Python port with matched mulberry32 PRNG (fitted params match to ~10 sig figs)
+- **Metric**: 843 (previous best: 837, delta: +6)
+- **Commit**: 625baecd
+- **Notes**: PR created via create_pull_request; branch `autoloop/perf-comparison` had no prior remote history (previous PR closed/stale) so a fresh branch was synced from main. Awaiting CI verification on next run before acceptance.
 
 ### Iteration 497 — 2026-09-01T07:03:02Z — [Run](https://github.com/githubnext/tsb/actions/runs/33480036252)
 
