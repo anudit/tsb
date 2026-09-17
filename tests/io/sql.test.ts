@@ -521,6 +521,21 @@ describe("toSql / readSqlTable — round-trip", () => {
 // ─── property-based tests ─────────────────────────────────────────────────────
 
 describe("readSqlQuery — property tests", () => {
+  it("preserves column names that collide with object prototype properties", () => {
+    const columns = ["__proto__", "constructor", "toString"];
+    for (const rowCount of [0, 2]) {
+      const rows = Array.from({ length: rowCount }, () =>
+        Object.fromEntries(columns.map((column) => [column, 42])),
+      );
+      const conn: SqlConnection = { query: () => ({ columns, rows }) };
+      const df = readSqlQuery("SELECT 1", conn);
+      expect(df.shape).toEqual([rowCount, columns.length]);
+      for (const column of columns) {
+        expect([...df.col(column).values]).toEqual(Array.from({ length: rowCount }, () => 42));
+      }
+    }
+  });
+
   it("shape matches result column/row counts", () => {
     fc.assert(
       fc.property(
