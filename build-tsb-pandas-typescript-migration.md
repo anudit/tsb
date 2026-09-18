@@ -6,24 +6,24 @@
 
 | Field | Value |
 |-------|-------|
-| Last Run | 2026-09-18T01:29:55Z |
-| Iteration Count | 507 |
+| Last Run | 2026-09-18T07:10:18Z |
+| Iteration Count | 508 |
 | Best Metric | 210 |
 | Target Metric | — |
 | Metric Direction | higher |
 | Branch | `autoloop/build-tsb-pandas-typescript-migration` |
-| PR | — |
+| PR | #513 |
 | Issue | #1 |
 | Paused | false |
 | Pause Reason | — |
 | Completed | false |
 | Completed Reason | — |
 | Consecutive Errors | 0 |
-| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, pending-ci |
-| Pending Tree | 1e62f63b61062c86431e0261a657cf3abddcf4fc |
-| Pending Metric | 210 |
-| Pending Iteration | 508 |
-| Pending Run | https://github.com/githubnext/tsb/actions/runs/35294423502 |
+| Recent Statuses | accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, accepted, pending-ci, accepted |
+| Pending Tree | — |
+| Pending Metric | — |
+| Pending Iteration | — |
+| Pending Run | — |
 | CI Fix Attempts | 0 |
 
 ---
@@ -33,7 +33,7 @@
 **Goal**: Build tsb — complete TypeScript port of pandas
 **Metric**: pandas_features_ported (higher is better)
 **Branch**: [`autoloop/build-tsb-pandas-typescript-migration`](../../tree/autoloop/build-tsb-pandas-typescript-migration)
-**Pull Request**: (queued, iteration 508) | **Issue**: #1
+**Pull Request**: #513 | **Issue**: #1
 
 ---
 
@@ -53,6 +53,8 @@
 
 ---
 
+- **Iter 508 reconciliation (2026-09-18)**: Confirmed acceptance evidence via authenticated MCP reads only (no `gh` CLI): verified `HEAD^{tree}` of the branch equals the recorded `Pending Tree`; selected the CI workflow run for exact head SHA `4285819e` via paginated `actions_list`/`list_workflow_runs` (had to manually assemble >30-row pages since the MCP server caps a single call at 30 rows regardless of `per_page`); confirmed all 4 required jobs (Test & Lint, Playground E2E, Build, Validate Python Examples) succeeded via `list_workflow_jobs`; and cross-checked the PR #513 status-check rollup (`get_check_runs`/`get_status` plus full `get_workflow_job` receipts for all 8 required-name check rows across the two duplicate CI-trigger runs) — all successful. Only after this did the acceptance proceed.
+
 ## 🚧 Foreclosed Avenues
 
 - **Adding placeholder "scientific domain" directories/files purely to raise the file-count metric**: definitively ruled out. These files were never shown to contain real, tested, exported pandas-parity functionality — they inflated `pandas_features_ported` without corresponding value, violating the program's actual goal (pandas API parity) and this project's AGENTS.md requirements (100% test coverage, playground page per feature, real implementation). Any future iteration proposing bulk-generated "domain" files must first prove each file has genuine tests, JSDoc, and a pandas equivalent — otherwise reject.
@@ -70,10 +72,11 @@
 
 ## 📊 Iteration History
 
-### Iteration 508 — 2026-09-18 01:29 UTC — [Run](https://github.com/githubnext/tsb/actions/runs/35294423502)
-- **Status**: ⏳ Pending CI (queued for PR creation)
+### Iteration 508 — 2026-09-18 07:10 UTC — [Run](https://github.com/githubnext/tsb/actions/runs/35317390917)
+- **Status**: ✅ Accepted (reconciled from pending-ci)
 - **Change**: Added `to_period()` (DatetimeIndex → PeriodIndex), `PeriodIndex.to_timestamp()`, and `Period.to_timestamp()` mirroring pandas' equivalents, with differential tests against pandas 2.2.3 and a playground section. Also corrected the recorded `Best Metric`/`Iteration History` to reflect the verified current count (210) instead of the previously unverified 23499 — see Lessons Learned and Current Priorities for evidence.
-- **Metric**: 210 (previous recorded best: 23499, but that value is unverified/corrupted — see notes above; verified `main` baseline is also 210, so this iteration is a like-for-like real-feature addition with no file-count movement)
-- **Notes**: This is a metric-contract-mismatch situation: the file-count metric does not reward this iteration's real, tested functionality because it was added to an existing file. Publishing anyway because the work is genuine, tested, in-scope pandas parity; not silently claiming to have "beaten" the inflated prior best.
+- **Metric**: 210 (previous best: 210 — see notes above on the prior unverified 23499 value; this is a like-for-like real-feature addition with no file-count movement)
+- **Commit**: 4285819e
+- **Notes**: This is a metric-contract-mismatch situation: the file-count metric does not reward this iteration's real, tested functionality because it was added to an existing file. Published anyway because the work is genuine, tested, in-scope pandas parity; not silently claiming to have "beaten" the inflated prior best. Verified via PR #513: both the CI run for head SHA `4285819e` (all 4 required jobs — Test & Lint, Playground E2E, Build, Validate Python Examples — succeeded) and the PR's status-check rollup (all 8 required-name check runs across duplicate CI triggers succeeded) before acceptance.
 
 ### Iters 1–507 — ✅/⚠️ mixed — see Lessons Learned above for the iter-495/506/507 metric-corruption finding. Prior detailed entries for iterations 452–507 removed during this compaction; consult git history (commits `bbce42f2`, `456ceff7`, `2fb568a2`, PR #363) for full detail if needed. Iterations 1–451 (full pandas port 0→193, then ML modules) remain trusted as plausible, incremental, verified-by-nature growth.
