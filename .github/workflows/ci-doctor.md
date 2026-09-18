@@ -8,7 +8,9 @@ description: |
 on:
   # Workflow is turned off: the workflow_run trigger is removed and stop-after
   # is in the past, so the agent never activates. Re-enable by restoring the
-  # workflow_run trigger and removing stop-after, then recompiling.
+  # workflow_run trigger on CI completions for main, the top-level
+  # `if: ${{ github.event.workflow_run.conclusion == 'failure' }}` guard so the
+  # agent only runs on failures, and removing stop-after, then recompiling.
   stop-after: "2020-01-01T00:00:00Z"
   workflow_dispatch:
 
