@@ -225,7 +225,7 @@ export {
   dataFramePipeChain,
 } from "./stats/index.ts";
 
-export { Period, PeriodIndex } from "./core/index.ts";
+export { Period, PeriodIndex, to_period } from "./core/index.ts";
 export type { PeriodFreq, PeriodIndexOptions } from "./core/index.ts";
 export { TimedeltaIndex, Timedelta } from "./core/index.ts";
 export type { TimedeltaComponents, TimedeltaIndexOptions } from "./core/index.ts";
