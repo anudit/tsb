@@ -617,6 +617,13 @@ export type {
 } from "./stats/swaplevel.ts";
 export { truncateSeries, truncateDataFrame } from "./stats/truncate.ts";
 export type { TruncateOptions } from "./stats/truncate.ts";
+export {
+  atTimeSeries,
+  atTimeDataFrame,
+  betweenTimeSeries,
+  betweenTimeDataFrame,
+} from "./stats/at_time.ts";
+export type { BetweenTimeInclusive } from "./stats/at_time.ts";
 export { seriesBetween } from "./stats/index.ts";
 export type { BetweenInclusive, BetweenOptions } from "./stats/index.ts";
 export { seriesUpdate, dataFrameUpdate } from "./stats/index.ts";
