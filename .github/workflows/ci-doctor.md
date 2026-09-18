@@ -6,15 +6,11 @@ description: |
   and workflow configuration to help diagnose and resolve CI issues efficiently.
 
 on:
-  workflow_run:
-    workflows: ["CI"]  # Monitor the CI workflow specifically
-    types:
-      - completed
-    branches:
-      - main
-
-# Only trigger for failures - check in the workflow body
-if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+  # Workflow is turned off: the workflow_run trigger is removed and stop-after
+  # is in the past, so the agent never activates. Re-enable by restoring the
+  # workflow_run trigger and removing stop-after, then recompiling.
+  stop-after: "2020-01-01T00:00:00Z"
+  workflow_dispatch:
 
 permissions: read-all
 

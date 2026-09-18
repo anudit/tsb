@@ -4,6 +4,10 @@ description: Investigate one current merge blocker after deterministic handling 
 run-name: Merge Steward Diagnosis / ${{ inputs.exception_key }}
 
 on:
+  # Workflow is turned off: stop-after is in the past, so the agent never
+  # activates even when the reconciler dispatches it. Re-enable by removing
+  # stop-after and recompiling.
+  stop-after: "2020-01-01T00:00:00Z"
   workflow_dispatch:
     inputs:
       pull_request_number:

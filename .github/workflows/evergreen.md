@@ -1,7 +1,9 @@
 ---
 on:
-  schedule:
-    - cron: "*/15 * * * *"
+  # Workflow is turned off: the schedule is removed and stop-after is in the
+  # past, so the agent never activates. Re-enable by restoring the schedule and
+  # removing stop-after, then recompiling.
+  stop-after: "2020-01-01T00:00:00Z"
   workflow_dispatch:
     inputs:
       pr:

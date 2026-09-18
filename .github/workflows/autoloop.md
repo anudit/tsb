@@ -11,15 +11,16 @@ description: |
   - Maintains a single draft PR per program that accumulates all accepted iterations
 
 on:
-  schedule: every 6h
+  # Workflow is turned off: automatic triggers removed and stop-after is in the
+  # past, so the agent never activates. Re-enable by restoring the schedule and
+  # slash_command triggers and removing stop-after, then recompiling.
+  stop-after: "2020-01-01T00:00:00Z"
   workflow_dispatch:
     inputs:
       program:
         description: "Run a specific program by name (bypasses scheduling)"
         required: false
         type: string
-  slash_command:
-    name: autoloop
 
 concurrency:
   # Hold one work slot through safe outputs and memory publication. Non-command

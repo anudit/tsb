@@ -5,15 +5,16 @@ description: |
   draft PR, durable repo-memory state, a status comment, and a per-run comment.
 
 on:
-  schedule: every 1h
+  # Workflow is turned off: automatic triggers removed and stop-after is in the
+  # past, so the agent never activates. Re-enable by restoring the schedule and
+  # slash_command triggers and removing stop-after, then recompiling.
+  stop-after: "2020-01-01T00:00:00Z"
   workflow_dispatch:
     inputs:
       issue:
         description: "Run a specific goal issue number"
         required: false
         type: string
-  slash_command:
-    name: goal
 
 concurrency:
   # Hold one work slot through safe outputs and memory publication. Non-command
