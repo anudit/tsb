@@ -21,7 +21,18 @@ export interface IndexOptions<T extends Label> {
  * (as the row axis *and* column axis).
  */
 export class Index<T extends Label = Label> {
-  /** Internal storage — never exposed mutably. */
+  /**
+   * Internal storage — a defensive copy of the caller's array.
+   *
+   * PERF: deliberately *not* `Object.freeze`d.  In JSC (Bun's engine) any of
+   * `freeze`/`seal`/`preventExtensions` transitions an array to
+   * `SlowPutArrayStorage`, which removes the fast `GetByVal` path and makes
+   * every element read ~14x slower — a tax paid by every operation in the
+   * library.  The `[...data]` copy, not the freeze, is what provides the
+   * immutability guarantee that matters (no aliasing of the caller's array);
+   * the `readonly T[]` type enforces the rest at compile time.
+   * Do not re-add the freeze.
+   */
   protected readonly _values: readonly T[];
 
   /** Optional human-readable label for this axis. */
@@ -30,7 +41,7 @@ export class Index<T extends Label = Label> {
   // ─── construction ───────────────────────────────────────────────
 
   constructor(data: readonly T[], name?: string | null) {
-    this._values = Object.freeze([...data]);
+    this._values = [...data];
     this.name = name ?? null;
   }
 

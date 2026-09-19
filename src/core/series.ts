@@ -128,12 +128,12 @@ let _fvals: Float64Array = new Float64Array(0);
 let _fvalsU32: Uint32Array = new Uint32Array(0);
 /**
  * Module-level output permutation buffer, grown lazily.
- * Safe to reuse across calls because Index copies its input via Object.freeze([...data]).
+ * Safe to reuse across calls because Index copies its input via [...data].
  */
 let _permBuf: number[] = [];
 /**
  * Module-level output value buffer, grown lazily.
- * Safe to reuse across calls because Series copies its input via Object.freeze([...data]).
+ * Safe to reuse across calls because Series copies its input via [...data].
  */
 let _outBuf: number[] = [];
 
@@ -187,6 +187,18 @@ export interface SeriesOptions<T extends Scalar = Scalar> {
  * ```
  */
 export class Series<T extends Scalar = Scalar> {
+  /**
+   * Internal storage — a defensive copy of the caller's array.
+   *
+   * PERF: deliberately *not* `Object.freeze`d.  In JSC (Bun's engine) any of
+   * `freeze`/`seal`/`preventExtensions` transitions an array to
+   * `SlowPutArrayStorage`, which removes the fast `GetByVal` path and makes
+   * every element read ~14x slower — a tax paid by every operation in the
+   * library.  The `[...data]` copy, not the freeze, is what provides the
+   * immutability guarantee that matters (no aliasing of the caller's array);
+   * the `readonly T[]` type enforces the rest at compile time.
+   * Do not re-add the freeze.
+   */
   private readonly _values: readonly T[];
   readonly index: Index<Label>;
   readonly dtype: Dtype;
@@ -206,7 +218,7 @@ export class Series<T extends Scalar = Scalar> {
 
   constructor(options: SeriesOptions<T>) {
     const { data, index, dtype, name } = options;
-    this._values = Object.freeze([...data]);
+    this._values = [...data];
     this.dtype = dtype ?? Dtype.inferFrom(data as readonly Scalar[]);
     this.name = name ?? null;
 
@@ -1009,7 +1021,7 @@ export class Series<T extends Scalar = Scalar> {
     // For the numeric path, read sorted row indices directly from srcBuf[i*3] (no
     // intermediate copy to finSlice), saving one O(finCount) loop.
     // Reuse module-level buffers — Index and Series both copy their inputs via
-    // Object.freeze([...data]), so sharing across calls is safe.
+    // [...data], so sharing across calls is safe.
     if (_permBuf.length < n) {
       _permBuf = new Array<number>(n);
       _outBuf = new Array<number>(n);

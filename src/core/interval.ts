@@ -216,8 +216,8 @@ export class IntervalIndex {
         `left and right arrays must have the same length (${left.length} vs ${right.length})`,
       );
     }
-    this.left = Object.freeze([...left]);
-    this.right = Object.freeze([...right]);
+    this.left = [...left];
+    this.right = [...right];
     this.closed = closed;
     this.name = name;
   }

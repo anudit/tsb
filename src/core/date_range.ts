@@ -202,7 +202,7 @@ export class DatetimeIndex {
   readonly name: string | null;
 
   private constructor(dates: readonly Date[], name: string | null) {
-    this._dates = Object.freeze([...dates]);
+    this._dates = [...dates];
     this.name = name;
   }
 

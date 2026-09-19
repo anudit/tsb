@@ -43,7 +43,7 @@ describe("Index construction", () => {
     expect(idx.name).toBe("x");
   });
 
-  it("freezes internal values (immutable)", () => {
+  it("copies input data (mutating the source array does not affect the Index)", () => {
     const data = [1, 2, 3];
     const idx = new Index(data);
     data.push(4); // mutating original array doesn't affect Index

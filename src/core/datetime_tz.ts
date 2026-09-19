@@ -199,7 +199,7 @@ export class TZDatetimeIndex {
 
   /** @internal */
   constructor(utcMs: readonly number[], tz: string, name: string | null) {
-    this._utcMs = Object.freeze([...utcMs]);
+    this._utcMs = [...utcMs];
     this.tz = tz;
     this.name = name;
   }

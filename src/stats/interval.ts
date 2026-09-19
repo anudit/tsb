@@ -188,7 +188,7 @@ export class IntervalIndex {
   readonly name: string | null;
 
   constructor(intervals: readonly Interval[], name: string | null = null) {
-    this._intervals = Object.freeze([...intervals]);
+    this._intervals = [...intervals];
     this.name = name;
   }
 

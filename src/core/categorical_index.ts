@@ -116,8 +116,8 @@ export class CategoricalIndex {
     ordered: boolean,
     name: string | null,
   ) {
-    this._categories = Object.freeze([...categories]);
-    this._codes = Object.freeze([...codes]);
+    this._categories = [...categories];
+    this._codes = [...codes];
     this._catMap = buildCategoryMap(categories);
     this.ordered = ordered;
     this.name = name;
