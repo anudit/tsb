@@ -624,6 +624,8 @@ export {
   betweenTimeDataFrame,
 } from "./stats/at_time.ts";
 export type { BetweenTimeInclusive } from "./stats/at_time.ts";
+export { asfreqSeries, asfreqDataFrame } from "./stats/asfreq.ts";
+export type { AsfreqOptions } from "./stats/asfreq.ts";
 export { seriesBetween } from "./stats/index.ts";
 export type { BetweenInclusive, BetweenOptions } from "./stats/index.ts";
 export { seriesUpdate, dataFrameUpdate } from "./stats/index.ts";
